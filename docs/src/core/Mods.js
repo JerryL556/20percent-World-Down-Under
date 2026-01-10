@@ -4,13 +4,13 @@
 export const weaponMods = [
   { id: null, name: 'Empty', desc: 'No changes', apply: (w) => w },
   { id: 'w_dmg_up', name: 'FMJ Rounds', desc: '+10% damage', apply: (w) => ({ ...w, damage: Math.floor(w.damage * 1.1) }) },
-  { id: 'w_firerate_up', name: 'Custom Trigger', desc: '+12% fire rate', allow: (base) => !!base && base.projectile !== 'rocket', apply: (w) => ({ ...w, fireRateMs: Math.max(60, Math.floor(w.fireRateMs * 0.88)) }) },
+  { id: 'w_firerate_up', name: 'Custom Trigger', desc: '+12% fire rate', allow: (base) => !!base && !base.isFlamethrower && base.projectile !== 'rocket', apply: (w) => ({ ...w, fireRateMs: Math.max(60, Math.floor(w.fireRateMs * 0.88)) }) },
   {
     id: 'w_spread_down',
     name: 'Muzzle Brake',
     desc: '-20% spread angle & bloom cap',
     // Not applicable to Laser or rocket-projectile weapons (e.g., Rocket/MGL)
-    allow: (base) => !!base && !base.isLaser && base.projectile !== 'rocket',
+    allow: (base) => !!base && !base.isLaser && !base.isFlamethrower && base.projectile !== 'rocket',
     apply: (w) => {
       const newBase = Math.max(0, Math.floor((w.spreadDeg || 0) * 0.8));
       const hasMax = typeof w.maxSpreadDeg === 'number';
@@ -19,7 +19,7 @@ export const weaponMods = [
     },
   },
   
-  { id: 'w_speed_up', name: 'Advanced Propellant', desc: '+15% bullet speed', allow: (base) => !!base && !base.isLaser, apply: (w) => ({ ...w, bulletSpeed: Math.floor(w.bulletSpeed * 1.15) }) },
+  { id: 'w_speed_up', name: 'Advanced Propellant', desc: '+15% bullet speed', allow: (base) => !!base && !base.isLaser && !base.isFlamethrower, apply: (w) => ({ ...w, bulletSpeed: Math.floor(w.bulletSpeed * 1.15) }) },
   // (Incendiary/Toxic moved to cores per design)
   {
     id: 'w_mag_improved',
@@ -73,7 +73,7 @@ export const weaponMods = [
     ].join('\n'),
     allow: (base) => {
       if (!base) return false;
-      return !base.isLaser;
+      return !base.isLaser && !base.isFlamethrower;
     },
     apply: (w) => {
       if (!w) return w;
@@ -111,7 +111,7 @@ export const weaponCores = [
       '+Bullets pierce one target',
       '+15% bullet speed',
     ].join('\n'),
-    allow: (base) => !!base && !base.isLaser && base.projectile !== 'rocket',
+    allow: (base) => !!base && !base.isLaser && !base.isFlamethrower && base.projectile !== 'rocket',
     apply: (w) => {
       if (!w || w.isLaser || w.projectile === 'rocket') return w;
       const speed = typeof w.bulletSpeed === 'number' ? Math.floor(w.bulletSpeed * 1.15) : w.bulletSpeed;
@@ -142,7 +142,7 @@ export const weaponCores = [
     name: 'Explosive Core',
     desc: '+Small explosion on hit',
     // Do not apply to explosive weapons (rocket-like projectiles), Laser, or L-G Missiles
-    allow: (base) => !!base && !base.isLaser && base.projectile !== 'rocket' && base.id !== 'guided_missiles',
+    allow: (base) => !!base && !base.isLaser && !base.isFlamethrower && base.projectile !== 'rocket' && base.id !== 'guided_missiles',
     apply: (w) => {
       if (!w) return w;
       if (w.isLaser) return w; // disallow on Laser

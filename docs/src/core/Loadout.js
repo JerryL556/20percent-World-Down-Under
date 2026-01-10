@@ -32,9 +32,15 @@ function applyList(base, list, ids = []) {
 export function getEffectiveWeapon(gs, weaponId) {
   const base = getWeaponById(weaponId);
   const build = (gs.weaponBuilds && gs.weaponBuilds[weaponId]) || { mods: [null, null, null], core: null };
-  const safeMods = sanitizeWeaponMods(build.mods || []);
+  let safeMods = sanitizeWeaponMods(build.mods || []);
+  let coreId = build.core || null;
+  if (base?.isFlamethrower) {
+    const allowed = new Set([null, 'w_dmg_up', 'w_mag_improved', 'w_mag_extended']);
+    safeMods = safeMods.map((id) => (allowed.has(id) ? id : null));
+    coreId = null;
+  }
   const withMods = applyList(base, weaponMods, safeMods);
-  const withCore = applyList(withMods, weaponCores, [build.core || null]);
+  const withCore = applyList(withMods, weaponCores, [coreId]);
   return withCore;
 }
 
