@@ -57,7 +57,7 @@ export const weaponDefs = [
     reloadMs: 2000,
     isFlamethrower: true,
     flameConeDeg: 35,
-    flameRange: 90,
+    flameRange: 150,
     flameDps: 150,
     flameIgnitePerSec: 30,
     flameAmmoPerSec: 20,

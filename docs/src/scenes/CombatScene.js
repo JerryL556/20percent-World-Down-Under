@@ -8468,25 +8468,23 @@ export default class CombatScene extends Phaser.Scene {
     const holding = !!this.inputMgr?.isLMBDown;
     const igniteMs = weapon.flameIgniteMs || 500;
     const idleMs = weapon.flameIdleMs || 4000;
-    if (holding) {
-      if (!f.ignited) {
-        if (!f.igniteAt) f.igniteAt = now + igniteMs;
-        if (now >= f.igniteAt) {
-          f.ignited = true;
-          f.igniteAt = 0;
-          f.ignitedAt = now;
-        }
-      }
-    } else {
+    if (holding && !f.ignited && !f.igniteAt) {
+      f.igniteAt = now + igniteMs;
+    }
+    if (!f.ignited && f.igniteAt && now >= f.igniteAt) {
+      f.ignited = true;
       f.igniteAt = 0;
+      f.ignitedAt = now;
     }
 
     if (f.ignited) {
       const last = f.lastFireAt || 0;
-      const idleSince = last || f.ignitedAt || 0;
+      const ignAt = f.ignitedAt || 0;
+      const idleSince = (last && last >= ignAt) ? last : ignAt;
       if (idleSince && (now - idleSince) > idleMs) {
         f.ignited = false;
         f.ignitedAt = 0;
+        f.lastFireAt = 0;
         if (holding) f.igniteAt = now + igniteMs;
       }
     }
@@ -8585,11 +8583,11 @@ export default class CombatScene extends Phaser.Scene {
         try {
           f.coneG.clear();
           f.coneG.setPosition(origin.x, origin.y);
-          f.coneG.fillStyle(0xffaa33, 0.28);
-          f.coneG.lineStyle(1, 0xffcc66, 0.5);
+          f.coneG.fillStyle(0xffaa33, 0.35);
+          f.coneG.lineStyle(2, 0xffcc66, 0.65);
           f.coneG.beginPath();
           f.coneG.moveTo(0, 0);
-          const steps = 10;
+          const steps = 14;
           for (let i = 0; i <= steps; i += 1) {
             const t = i / steps;
             const ang = baseAngle - half + (2 * half * t);
@@ -8602,14 +8600,14 @@ export default class CombatScene extends Phaser.Scene {
         try {
           pixelSparks(this, origin.x, origin.y, {
             angleRad: baseAngle,
-            count: 5,
+            count: 18,
             spreadDeg: weapon.flameConeDeg || 35,
-            speedMin: 60,
-            speedMax: 140,
-            lifeMs: 160,
+            speedMin: 195,
+            speedMax: 480,
+            lifeMs: 390,
             color: 0xffaa33,
-            size: 2,
-            alpha: 0.85,
+            size: 4,
+            alpha: 0.9,
           });
         } catch (_) {}
       }
@@ -8620,7 +8618,7 @@ export default class CombatScene extends Phaser.Scene {
       if (f.ignited && now >= (f.idleFxAt || 0)) {
         const p = getWeaponMuzzleWorld(this, 2);
         try {
-          pixelSparks(this, p.x, p.y, { angleRad: baseAngle, count: 2, spreadDeg: 12, speedMin: 10, speedMax: 40, lifeMs: 120, color: 0xffaa33, size: 1, alpha: 0.7 });
+          pixelSparks(this, p.x, p.y, { angleRad: baseAngle, count: 3, spreadDeg: 14, speedMin: 12, speedMax: 50, lifeMs: 140, color: 0xffaa33, size: 2, alpha: 0.8 });
         } catch (_) {}
         f.idleFxAt = now + 120;
       }
