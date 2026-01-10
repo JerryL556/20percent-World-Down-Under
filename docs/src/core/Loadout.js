@@ -37,7 +37,7 @@ export function getEffectiveWeapon(gs, weaponId) {
   if (base?.isFlamethrower) {
     const allowed = new Set([null, 'w_dmg_up', 'w_mag_improved', 'w_mag_extended']);
     safeMods = safeMods.map((id) => (allowed.has(id) ? id : null));
-    coreId = null;
+    if (coreId !== 'core_flame_compression') coreId = null;
   }
   const withMods = applyList(base, weaponMods, safeMods);
   const withCore = applyList(withMods, weaponCores, [coreId]);

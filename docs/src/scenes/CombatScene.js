@@ -8576,35 +8576,16 @@ export default class CombatScene extends Phaser.Scene {
           else s.setData('hp', hp1);
         }
 
-        if (!f.coneG) {
-          f.coneG = this.add.graphics();
-          try { f.coneG.setDepth(8050); f.coneG.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
-        }
         try {
-          f.coneG.clear();
-          f.coneG.setPosition(origin.x, origin.y);
-          f.coneG.fillStyle(0xffaa33, 0.22);
-          f.coneG.lineStyle(2, 0xffcc66, 0.7);
-          f.coneG.beginPath();
-          f.coneG.moveTo(0, 0);
-          const steps = 14;
-          for (let i = 0; i <= steps; i += 1) {
-            const t = i / steps;
-            const ang = baseAngle - half + (2 * half * t);
-            f.coneG.lineTo(Math.cos(ang) * range, Math.sin(ang) * range);
-          }
-          f.coneG.closePath();
-          f.coneG.fillPath();
-          f.coneG.strokePath();
-        } catch (_) {}
-        try {
+          const spMul = (typeof weapon._flameParticleSpeedMult === 'number') ? weapon._flameParticleSpeedMult : 1;
+          const lifeMul = (typeof weapon._flameParticleLifeMult === 'number') ? weapon._flameParticleLifeMult : 1;
           pixelSparks(this, origin.x, origin.y, {
             angleRad: baseAngle,
             count: 18,
             spreadDeg: weapon.flameConeDeg || 35,
-            speedMin: 160,
-            speedMax: 400,
-            lifeMs: 310,
+            speedMin: 160 * spMul,
+            speedMax: 400 * spMul,
+            lifeMs: 310 * lifeMul,
             color: 0xffaa33,
             size: 4,
             alpha: 0.9,
@@ -8614,7 +8595,6 @@ export default class CombatScene extends Phaser.Scene {
     }
 
     if (!firing) {
-      try { f.coneG?.clear(); } catch (_) {}
       if (f.ignited && now >= (f.idleFxAt || 0)) {
         const p = getWeaponMuzzleWorld(this, 2);
         try {

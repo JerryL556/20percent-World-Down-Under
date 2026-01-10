@@ -138,6 +138,25 @@ export const weaponCores = [
     },
   },
   {
+    id: 'core_flame_compression',
+    name: 'Compression Nozzle',
+    onlyFor: 'flamethrower',
+    desc: [
+      '- Cone angle reduced to 12°',
+      '+ Flame range increased to 135px',
+    ].join('\n'),
+    apply: (w) => {
+      if (!w || w.id !== 'flamethrower') return w;
+      return {
+        ...w,
+        flameConeDeg: 12,
+        flameRange: 150,
+        _flameParticleSpeedMult: 1.2,
+        _flameParticleLifeMult: 1.2,
+      };
+    },
+  },
+  {
     id: 'core_blast',
     name: 'Explosive Core',
     desc: '+Small explosion on hit',
