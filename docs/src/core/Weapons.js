@@ -148,6 +148,25 @@ export const weaponDefs = [
     magSize: 45,
   },
   {
+    id: 'minigun',
+    name: 'Minigun',
+    desc: [
+      'Heavy rotary cannon that needs to spin up before firing.',
+      'Sustained fire tightens spread, but firing slows movement.',
+    ].join('\n'),
+    damage: 8,
+    fireRateMs: 40, // 1500 RPM
+    bulletSpeed: 500,
+    pelletCount: 1,
+    spreadDeg: 2,
+    maxSpreadDeg: 15,
+    color: 0xffee66,
+    price: 200,
+    magSize: 500,
+    reloadMs: 3000,
+    isMinigun: true,
+  },
+  {
     id: 'rocket',
     name: 'Rocket',
     desc: [

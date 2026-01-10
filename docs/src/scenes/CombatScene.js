@@ -2726,9 +2726,9 @@ export default class CombatScene extends Phaser.Scene {
     const startY = muzzle.y;
     try {
       const wid = gs.activeWeapon;
-      const allowed = new Set(['pistol','mgl','rifle','battle_rifle','shotgun','smg','guided_missiles','smart_hmg','rocket']);
+      const allowed = new Set(['pistol','mgl','rifle','battle_rifle','shotgun','smg','guided_missiles','smart_hmg','minigun','rocket']);
       if (allowed.has(wid)) {
-        const heavy = new Set(['smart_hmg','guided_missiles','rocket','shotgun','mgl']);
+        const heavy = new Set(['smart_hmg','guided_missiles','minigun','rocket','shotgun','mgl']);
         if (heavy.has(wid)) muzzleFlashSplit(this, startX, startY, { angle: baseAngle, color: 0xffee66, count: 3, spreadDeg: 24, length: 16, thickness: 4 });
         else if (wid === 'battle_rifle') muzzleFlash(this, startX, startY, { angle: baseAngle, color: 0xffee66, length: 14, thickness: 4 });
         else muzzleFlash(this, startX, startY, { angle: baseAngle, color: 0xffee66, length: 10, thickness: 3 });
@@ -2748,10 +2748,19 @@ export default class CombatScene extends Phaser.Scene {
     } catch (_) {}
     const pellets = weapon.pelletCount || 1;
     // Dynamic spread: increases while holding fire, recovers when released
-    const heat = this._spreadHeat || 0;
-    const maxExtra = (typeof weapon.maxSpreadDeg === 'number') ? weapon.maxSpreadDeg : 20;
-    const extraDeg = weapon.singleFire ? 0 : (maxExtra * heat);
-    const totalSpreadRad = Phaser.Math.DegToRad((weapon.spreadDeg || 0) + extraDeg);
+    let totalSpreadRad = 0;
+    if (weapon.isMinigun) {
+      const t = Math.max(0, Math.min(1, this._minigunSpreadT || 0));
+      const maxDeg = (typeof weapon.maxSpreadDeg === 'number') ? weapon.maxSpreadDeg : 7;
+      const minDeg = (typeof weapon.spreadDeg === 'number') ? weapon.spreadDeg : 2;
+      const spreadDeg = Phaser.Math.Linear(maxDeg, minDeg, t);
+      totalSpreadRad = Phaser.Math.DegToRad(spreadDeg);
+    } else {
+      const heat = this._spreadHeat || 0;
+      const maxExtra = (typeof weapon.maxSpreadDeg === 'number') ? weapon.maxSpreadDeg : 20;
+      const extraDeg = weapon.singleFire ? 0 : (maxExtra * heat);
+      totalSpreadRad = Phaser.Math.DegToRad((weapon.spreadDeg || 0) + extraDeg);
+    }
     // Smart HMG bullets: limited homing toward enemies (non-explosive)
     if (weapon.projectile === 'smart') {
       const angle0 = baseAngle;
@@ -3505,9 +3514,9 @@ export default class CombatScene extends Phaser.Scene {
           const m = getWeaponMuzzleWorld(this, 3);
           try {
             const wid = this.gs.activeWeapon;
-            const allowed = new Set(['pistol','mgl','rifle','battle_rifle','shotgun','smg','guided_missiles','smart_hmg','rocket']);
+            const allowed = new Set(['pistol','mgl','rifle','battle_rifle','shotgun','smg','guided_missiles','smart_hmg','minigun','rocket']);
             if (allowed.has(wid)) {
-              const heavy = new Set(['smart_hmg','guided_missiles','rocket','shotgun','mgl']);
+              const heavy = new Set(['smart_hmg','guided_missiles','minigun','rocket','shotgun','mgl']);
               if (heavy.has(wid)) muzzleFlashSplit(this, m.x, m.y, { angle: ang, color: 0xffee66, count: 3, spreadDeg: 24, length: 16, thickness: 4 });
               else if (wid === 'battle_rifle') muzzleFlash(this, m.x, m.y, { angle: ang, color: 0xffee66, length: 14, thickness: 4 });
               else muzzleFlash(this, m.x, m.y, { angle: ang, color: 0xffee66, length: 10, thickness: 3 });
@@ -3564,9 +3573,9 @@ export default class CombatScene extends Phaser.Scene {
         const m2 = getWeaponMuzzleWorld(this, 3);
         try {
           const wid = this.gs.activeWeapon;
-          const allowed = new Set(['pistol','mgl','rifle','battle_rifle','shotgun','smg','guided_missiles','smart_hmg','rocket']);
+          const allowed = new Set(['pistol','mgl','rifle','battle_rifle','shotgun','smg','guided_missiles','smart_hmg','minigun','rocket']);
           if (allowed.has(wid)) {
-            const heavy = new Set(['smart_hmg','guided_missiles','rocket','shotgun','mgl']);
+            const heavy = new Set(['smart_hmg','guided_missiles','minigun','rocket','shotgun','mgl']);
             if (heavy.has(wid)) muzzleFlashSplit(this, m2.x, m2.y, { angle: angle2, color: 0xffee66, count: 3, spreadDeg: 24, length: 16, thickness: 4 });
             else if (wid === 'battle_rifle') muzzleFlash(this, m2.x, m2.y, { angle: angle2, color: 0xffee66, length: 14, thickness: 4 });
             else muzzleFlash(this, m2.x, m2.y, { angle: angle2, color: 0xffee66, length: 10, thickness: 3 });
@@ -3732,7 +3741,8 @@ export default class CombatScene extends Phaser.Scene {
       this.dash.active = false;
       this._dashTrailLast = null;
       const mv = this.inputMgr.moveVec;
-      const speed = 200 * (eff.moveSpeedMult || 1);
+      const firingSlow = (this._minigunFiringUntil && now < this._minigunFiringUntil) ? 0.25 : 1;
+      const speed = 200 * (eff.moveSpeedMult || 1) * firingSlow;
       (this.playerCollider || this.player).setVelocity(mv.x * speed, mv.y * speed);
     }
 
@@ -3819,6 +3829,9 @@ export default class CombatScene extends Phaser.Scene {
     // Track and update ammo registry on weapon change or capacity change
     if (this._lastActiveWeapon !== this.gs.activeWeapon) {
       this._lastActiveWeapon = this.gs.activeWeapon;
+      this._minigunSpin = 0;
+      this._minigunSpreadT = 0;
+      this._minigunFiringUntil = 0;
       const cap = this.getActiveMagCapacity();
       this.ensureAmmoFor(this._lastActiveWeapon, cap);
       this.registry.set('ammoInMag', this.ammoByWeapon[this._lastActiveWeapon]);
@@ -3839,6 +3852,32 @@ export default class CombatScene extends Phaser.Scene {
 
     // Update spread heat each frame based on whether player is holding fire
     const dt = (this.game?.loop?.delta || 16.7) / 1000;
+    if (weapon.isMinigun) {
+      if (this._minigunSpin === undefined) this._minigunSpin = 0;
+      if (this._minigunSpreadT === undefined) this._minigunSpreadT = 0;
+      const holding = !loadoutOpen && this.inputMgr.isLMBDown;
+      const spinUpPerSec = 10; // 0 -> 10 in 1s
+      const spinDownPerSec = 5; // 10 -> 0 in 2s
+      if (holding) this._minigunSpin = Math.min(10, this._minigunSpin + spinUpPerSec * dt);
+      else this._minigunSpin = Math.max(0, this._minigunSpin - spinDownPerSec * dt);
+      const tightenPerSec = 1 / 2; // spread tightens to min in ~2s
+      const loosenPerSec = 1;
+      const firingNow = (this._minigunFiringUntil && now < this._minigunFiringUntil);
+      if (firingNow) this._minigunSpreadT = Math.min(1, this._minigunSpreadT + tightenPerSec * dt);
+      else this._minigunSpreadT = Math.max(0, this._minigunSpreadT - loosenPerSec * dt);
+      // Barrel spin "breeze" VFX near the muzzle
+      if (this._minigunSpin > 0) {
+        if (!this._minigunSpinFxAt) this._minigunSpinFxAt = 0;
+        if (now >= this._minigunSpinFxAt) {
+          const p = getWeaponBarrelPoint(this, 0.9, 1);
+          pixelSparks(this, p.x, p.y, { angleRad: Phaser.Math.FloatBetween(0, Math.PI * 2), count: 3, spreadDeg: 60, speedMin: 20, speedMax: 60, lifeMs: 140, color: 0xffffff, size: 1, alpha: 0.6 });
+          this._minigunSpinFxAt = now + 70;
+        }
+      }
+    } else {
+      this._minigunSpin = 0;
+      this._minigunSpreadT = 0;
+    }
     if (this._spreadHeat === undefined) this._spreadHeat = 0;
     const rampPerSec = 0.7; // time to max ~1.4s holding
     const coolPerSec = 1.2; // cool to 0 in ~0.8s
@@ -3861,7 +3900,8 @@ export default class CombatScene extends Phaser.Scene {
         this.handleLaser(this.time.now, weapon, ptr, dt);
       }
       const wantsShot = (!isRail && !isLaser) && (weapon.singleFire ? wantsClick : this.inputMgr.isLMBDown);
-      if (wantsShot && (!this.lastShot || this.time.now - this.lastShot > weapon.fireRateMs)) {
+      const minigunReady = !weapon.isMinigun || (this._minigunSpin >= 10);
+      if (wantsShot && minigunReady && (!this.lastShot || this.time.now - this.lastShot > weapon.fireRateMs)) {
         const cap = this.getActiveMagCapacity();
         const wid = this.gs.activeWeapon;
         this.ensureAmmoFor(wid, cap);
@@ -3880,6 +3920,7 @@ export default class CombatScene extends Phaser.Scene {
           this.lastShot = this.time.now;
           this.ammoByWeapon[wid] = Math.max(0, ammo - 1);
           this.registry.set('ammoInMag', this.ammoByWeapon[wid]);
+          if (weapon.isMinigun) this._minigunFiringUntil = this.time.now + 120;
           // Auto-reload for rocket launcher (mag size 1)
           if (wid === 'rocket' && this.ammoByWeapon[wid] <= 0) {
             if (!this.reload.active) {
