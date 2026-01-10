@@ -261,6 +261,40 @@ export const weaponCores = [
     },
   },
   {
+    id: 'core_minigun_brushless',
+    name: 'Brushless Motors',
+    onlyFor: 'minigun',
+    desc: [
+      '+ Barrel spin-up is 10x faster',
+      '- Rate of fire reduced to 1650 RPM',
+    ].join('\n'),
+    apply: (w) => {
+      if (!w || w.id !== 'minigun') return w;
+      return {
+        ...w,
+        fireRateMs: 36, // 1650 RPM
+        _spinUpMult: 10,
+      };
+    },
+  },
+  {
+    id: 'core_minigun_lightweight',
+    name: 'Lightweight Bullet',
+    onlyFor: 'minigun',
+    desc: [
+      '- Damage reduced to 7',
+      '+ Move speed while firing increased to 50%',
+    ].join('\n'),
+    apply: (w) => {
+      if (!w || w.id !== 'minigun') return w;
+      return {
+        ...w,
+        damage: 7,
+        _firingMoveMult: 0.5,
+      };
+    },
+  },
+  {
     id: 'core_smart_explosives',
     name: 'Smart Explosives',
     onlyFor: 'rocket',

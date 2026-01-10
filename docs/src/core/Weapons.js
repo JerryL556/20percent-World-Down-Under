@@ -154,8 +154,8 @@ export const weaponDefs = [
       'Heavy rotary cannon that needs to spin up before firing.',
       'Sustained fire tightens spread, but firing slows movement.',
     ].join('\n'),
-    damage: 8,
-    fireRateMs: 40, // 1500 RPM
+    damage: 10,
+    fireRateMs: 30, // 2000 RPM
     bulletSpeed: 500,
     pelletCount: 1,
     spreadDeg: 2,

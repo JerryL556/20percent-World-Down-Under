@@ -3741,7 +3741,11 @@ export default class CombatScene extends Phaser.Scene {
       this.dash.active = false;
       this._dashTrailLast = null;
       const mv = this.inputMgr.moveVec;
-      const firingSlow = (this._minigunFiringUntil && now < this._minigunFiringUntil) ? 0.25 : 1;
+      let firingSlow = 1;
+      if (this._minigunFiringUntil && now < this._minigunFiringUntil) {
+        const w = getEffectiveWeapon(this.gs, this.gs.activeWeapon);
+        firingSlow = (typeof w._firingMoveMult === 'number') ? w._firingMoveMult : 0.25;
+      }
       const speed = 200 * (eff.moveSpeedMult || 1) * firingSlow;
       (this.playerCollider || this.player).setVelocity(mv.x * speed, mv.y * speed);
     }
@@ -3856,11 +3860,12 @@ export default class CombatScene extends Phaser.Scene {
       if (this._minigunSpin === undefined) this._minigunSpin = 0;
       if (this._minigunSpreadT === undefined) this._minigunSpreadT = 0;
       const holding = !loadoutOpen && this.inputMgr.isLMBDown;
-      const spinUpPerSec = 10; // 0 -> 10 in 1s
+      const spinMult = (typeof weapon._spinUpMult === 'number') ? weapon._spinUpMult : 1;
+      const spinUpPerSec = 10 * spinMult; // 0 -> 10 in 1s
       const spinDownPerSec = 5; // 10 -> 0 in 2s
       if (holding) this._minigunSpin = Math.min(10, this._minigunSpin + spinUpPerSec * dt);
       else this._minigunSpin = Math.max(0, this._minigunSpin - spinDownPerSec * dt);
-      const tightenPerSec = 1 / 2; // spread tightens to min in ~2s
+      const tightenPerSec = 1; // spread tightens to min in ~1s
       const loosenPerSec = 1;
       const firingNow = (this._minigunFiringUntil && now < this._minigunFiringUntil);
       if (firingNow) this._minigunSpreadT = Math.min(1, this._minigunSpreadT + tightenPerSec * dt);
