@@ -17,6 +17,7 @@ export const WEAPON_TEXTURES = {
   guided_missiles: { key: 'weapon_guided_missiles', path: 'assets/MicroMissile.png', height: 9, mult: 1.25 }, // slightly smaller guided missiles
   smart_hmg: { key: 'weapon_smart_hmg', path: 'assets/HMG.png', height: 9, mult: 1.35 }, // slightly smaller HMG
   minigun: { key: 'weapon_minigun', path: 'assets/Minigun.png', height: 9, mult: 1.6 },
+  flamethrower: { key: 'weapon_flamethrower', path: 'assets/Flamethrower.png', height: 9, mult: 1.45 },
 };
 
 // Global multiplier to tweak all weapon sprite sizes uniformly

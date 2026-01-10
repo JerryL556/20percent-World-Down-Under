@@ -3764,6 +3764,7 @@ export default class CombatScene extends Phaser.Scene {
     const weapon = getEffectiveWeapon(this.gs, this.gs.activeWeapon);
     const isRail = !!weapon.isRailgun;
     const isLaser = !!weapon.isLaser;
+    const isFlame = !!weapon.isFlamethrower;
     // Finish reload if timer elapsed; update reload progress for UI
     if (this.reload?.active) {
       const now = this.time.now;
@@ -3836,6 +3837,10 @@ export default class CombatScene extends Phaser.Scene {
       this._minigunSpin = 0;
       this._minigunSpreadT = 0;
       this._minigunFiringUntil = 0;
+      try {
+        if (this._flame?.coneG) { this._flame.coneG.destroy(); }
+      } catch (_) {}
+      this._flame = null;
       const cap = this.getActiveMagCapacity();
       this.ensureAmmoFor(this._lastActiveWeapon, cap);
       this.registry.set('ammoInMag', this.ammoByWeapon[this._lastActiveWeapon]);
@@ -3886,7 +3891,7 @@ export default class CombatScene extends Phaser.Scene {
     if (this._spreadHeat === undefined) this._spreadHeat = 0;
     const rampPerSec = 0.7; // time to max ~1.4s holding
     const coolPerSec = 1.2; // cool to 0 in ~0.8s
-    if (!loadoutOpen && this.inputMgr.isLMBDown && !weapon.singleFire && !isRail && !isLaser) {
+    if (!loadoutOpen && this.inputMgr.isLMBDown && !weapon.singleFire && !isRail && !isLaser && !isFlame) {
       this._spreadHeat = Math.min(1, this._spreadHeat + rampPerSec * dt);
     } else {
       this._spreadHeat = Math.max(0, this._spreadHeat - coolPerSec * dt);
@@ -3904,7 +3909,11 @@ export default class CombatScene extends Phaser.Scene {
       if (isLaser) {
         this.handleLaser(this.time.now, weapon, ptr, dt);
       }
-      const wantsShot = (!isRail && !isLaser) && (weapon.singleFire ? wantsClick : this.inputMgr.isLMBDown);
+      // Flamethrower handling (continuous)
+      if (isFlame) {
+        this.handleFlamethrower(this.time.now, weapon, ptr, dt);
+      }
+      const wantsShot = (!isRail && !isLaser && !isFlame) && (weapon.singleFire ? wantsClick : this.inputMgr.isLMBDown);
       const minigunReady = !weapon.isMinigun || (this._minigunSpin >= 10);
       if (wantsShot && minigunReady && (!this.lastShot || this.time.now - this.lastShot > weapon.fireRateMs)) {
         const cap = this.getActiveMagCapacity();
@@ -6787,6 +6796,24 @@ export default class CombatScene extends Phaser.Scene {
     return { ex, ey };
   }
 
+  // Check if a line is blocked by hard barricades only
+  isLineBlockedByHard(x0, y0, x1, y1) {
+    try {
+      const arr = this.barricadesHard?.getChildren?.() || [];
+      if (!arr.length) return false;
+      const line = new Phaser.Geom.Line(x0, y0, x1, y1);
+      for (let i = 0; i < arr.length; i += 1) {
+        const s = arr[i];
+        if (!s?.active) continue;
+        const rect = s.getBounds?.() || new Phaser.Geom.Rectangle(s.x - 8, s.y - 8, 16, 16);
+        if (Phaser.Geom.Intersects.LineToRectangle(line, rect)) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   updateBossAI() {
     const e = this.boss; if (!e || !e.active) return;
     const now = this.time.now;
@@ -8427,6 +8454,175 @@ export default class CombatScene extends Phaser.Scene {
         this.reload.until = this.time.now + this.reload.duration;
         this.registry.set('reloadActive', true);
         this.registry.set('reloadProgress', 0);
+      }
+    }
+  }
+
+  handleFlamethrower(now, weapon, ptr, dt) {
+    if (!this._flame) this._flame = { ignited: false, igniteAt: 0, ignitedAt: 0, lastFireAt: 0, idleFxAt: 0, ammoCarry: 0, coneG: null };
+    const f = this._flame;
+    const wid = this.gs.activeWeapon;
+    const cap = this.getActiveMagCapacity();
+    this.ensureAmmoFor(wid, cap);
+
+    const holding = !!this.inputMgr?.isLMBDown;
+    const igniteMs = weapon.flameIgniteMs || 500;
+    const idleMs = weapon.flameIdleMs || 4000;
+    if (holding) {
+      if (!f.ignited) {
+        if (!f.igniteAt) f.igniteAt = now + igniteMs;
+        if (now >= f.igniteAt) {
+          f.ignited = true;
+          f.igniteAt = 0;
+          f.ignitedAt = now;
+        }
+      }
+    } else {
+      f.igniteAt = 0;
+    }
+
+    if (f.ignited) {
+      const last = f.lastFireAt || 0;
+      const idleSince = last || f.ignitedAt || 0;
+      if (idleSince && (now - idleSince) > idleMs) {
+        f.ignited = false;
+        f.ignitedAt = 0;
+        if (holding) f.igniteAt = now + igniteMs;
+      }
+    }
+
+    const baseAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, ptr.worldX, ptr.worldY);
+    let firing = false;
+    if (holding && f.ignited && !this.reload.active) {
+      const ammo = this.ammoByWeapon[wid] ?? 0;
+      if (ammo <= 0) {
+        if (!this.reload.active) {
+          this.reload.active = true;
+          this.reload.duration = this.getActiveReloadMs();
+          this.reload.until = now + this.reload.duration;
+          this.registry.set('reloadActive', true);
+          this.registry.set('reloadProgress', 0);
+        }
+      } else {
+        firing = true;
+        f.lastFireAt = now;
+        const perSec = weapon.flameAmmoPerSec || 20;
+        f.ammoCarry = (f.ammoCarry || 0) + (perSec * dt);
+        const spend = Math.floor(f.ammoCarry);
+        if (spend > 0) {
+          this.ammoByWeapon[wid] = Math.max(0, ammo - spend);
+          f.ammoCarry -= spend;
+          this.registry.set('ammoInMag', this.ammoByWeapon[wid]);
+        }
+
+        const origin = getWeaponMuzzleWorld(this, 2);
+        const range = weapon.flameRange || 90;
+        const half = Phaser.Math.DegToRad((weapon.flameConeDeg || 35) * 0.5);
+        const range2 = range * range;
+        const dps = weapon.flameDps || 150;
+        const ignitePerSec = weapon.flameIgnitePerSec || 30;
+        const dmg = dps * dt;
+        const igniteAdd = ignitePerSec * dt;
+
+        const enemies = this.enemies?.getChildren?.() || [];
+        for (let i = 0; i < enemies.length; i += 1) {
+          const e = enemies[i];
+          if (!e?.active) continue;
+          const dx = e.x - origin.x;
+          const dy = e.y - origin.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > range2) continue;
+          const ang = Math.atan2(dy, dx);
+          const diff = Phaser.Math.Angle.Wrap(ang - baseAngle);
+          if (Math.abs(diff) > half) continue;
+          if (this.isLineBlockedByHard(origin.x, origin.y, e.x, e.y)) continue;
+          if (e.isDummy) {
+            this._dummyDamage = (this._dummyDamage || 0) + dmg;
+          } else {
+            if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
+            e.hp -= dmg;
+            try { this._flashEnemyHit(e); } catch (_) {}
+            if (e.hp <= 0) { try { this.killEnemy ? this.killEnemy(e) : e.destroy(); } catch (_) {} }
+          }
+          if (igniteAdd > 0) {
+            e._igniteValue = Math.min(10, (e._igniteValue || 0) + igniteAdd);
+            if ((e._igniteValue || 0) >= 10) {
+              e._ignitedUntil = now + 2000;
+              e._igniteValue = 0;
+              if (!e._igniteIndicator) {
+                e._igniteIndicator = this.add.graphics();
+                try { e._igniteIndicator.setDepth(9000); } catch (_) {}
+                e._igniteIndicator.fillStyle(0xff3333, 1).fillCircle(0, 0, 2);
+              }
+              try { e._igniteIndicator.setPosition(e.x, e.y - 14); } catch (_) {}
+            }
+          }
+        }
+
+        const soft = this.barricadesSoft?.getChildren?.() || [];
+        for (let i = 0; i < soft.length; i += 1) {
+          const s = soft[i];
+          if (!s?.active) continue;
+          if (!s.getData('destructible')) continue;
+          const dx = s.x - origin.x;
+          const dy = s.y - origin.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > range2) continue;
+          const ang = Math.atan2(dy, dx);
+          const diff = Phaser.Math.Angle.Wrap(ang - baseAngle);
+          if (Math.abs(diff) > half) continue;
+          if (this.isLineBlockedByHard(origin.x, origin.y, s.x, s.y)) continue;
+          const hp0 = (typeof s.getData('hp') === 'number') ? s.getData('hp') : 20;
+          const hp1 = hp0 - dmg;
+          if (hp1 <= 0) { try { s.destroy(); } catch (_) {} }
+          else s.setData('hp', hp1);
+        }
+
+        if (!f.coneG) {
+          f.coneG = this.add.graphics();
+          try { f.coneG.setDepth(8050); f.coneG.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+        }
+        try {
+          f.coneG.clear();
+          f.coneG.setPosition(origin.x, origin.y);
+          f.coneG.fillStyle(0xffaa33, 0.28);
+          f.coneG.lineStyle(1, 0xffcc66, 0.5);
+          f.coneG.beginPath();
+          f.coneG.moveTo(0, 0);
+          const steps = 10;
+          for (let i = 0; i <= steps; i += 1) {
+            const t = i / steps;
+            const ang = baseAngle - half + (2 * half * t);
+            f.coneG.lineTo(Math.cos(ang) * range, Math.sin(ang) * range);
+          }
+          f.coneG.closePath();
+          f.coneG.fillPath();
+          f.coneG.strokePath();
+        } catch (_) {}
+        try {
+          pixelSparks(this, origin.x, origin.y, {
+            angleRad: baseAngle,
+            count: 5,
+            spreadDeg: weapon.flameConeDeg || 35,
+            speedMin: 60,
+            speedMax: 140,
+            lifeMs: 160,
+            color: 0xffaa33,
+            size: 2,
+            alpha: 0.85,
+          });
+        } catch (_) {}
+      }
+    }
+
+    if (!firing) {
+      try { f.coneG?.clear(); } catch (_) {}
+      if (f.ignited && now >= (f.idleFxAt || 0)) {
+        const p = getWeaponMuzzleWorld(this, 2);
+        try {
+          pixelSparks(this, p.x, p.y, { angleRad: baseAngle, count: 2, spreadDeg: 12, speedMin: 10, speedMax: 40, lifeMs: 120, color: 0xffaa33, size: 1, alpha: 0.7 });
+        } catch (_) {}
+        f.idleFxAt = now + 120;
       }
     }
   }

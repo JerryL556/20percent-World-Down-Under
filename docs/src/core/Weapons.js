@@ -39,6 +39,32 @@ export const weaponDefs = [
     reloadMs: 2000, // cooldown duration after overheat
   },
   {
+    id: 'flamethrower',
+    name: 'Flamethrower',
+    desc: [
+      'Projects a short, wide cone of fire that burns targets and soft cover.',
+      'Requires a brief ignition warm-up; flame fades after idling.',
+    ].join('\n'),
+    damage: 0,
+    fireRateMs: 0,
+    bulletSpeed: 0,
+    pelletCount: 1,
+    spreadDeg: 0,
+    maxSpreadDeg: 0,
+    color: 0xffaa33,
+    price: 175,
+    magSize: 100,
+    reloadMs: 2000,
+    isFlamethrower: true,
+    flameConeDeg: 35,
+    flameRange: 90,
+    flameDps: 150,
+    flameIgnitePerSec: 30,
+    flameAmmoPerSec: 20,
+    flameIgniteMs: 500,
+    flameIdleMs: 4000,
+  },
+  {
     id: 'mgl',
     name: 'MGL',
     desc: [
