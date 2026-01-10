@@ -8583,8 +8583,8 @@ export default class CombatScene extends Phaser.Scene {
         try {
           f.coneG.clear();
           f.coneG.setPosition(origin.x, origin.y);
-          f.coneG.fillStyle(0xffaa33, 0.35);
-          f.coneG.lineStyle(2, 0xffcc66, 0.65);
+          f.coneG.fillStyle(0xffaa33, 0.22);
+          f.coneG.lineStyle(2, 0xffcc66, 0.7);
           f.coneG.beginPath();
           f.coneG.moveTo(0, 0);
           const steps = 14;
@@ -8602,9 +8602,9 @@ export default class CombatScene extends Phaser.Scene {
             angleRad: baseAngle,
             count: 18,
             spreadDeg: weapon.flameConeDeg || 35,
-            speedMin: 195,
-            speedMax: 480,
-            lifeMs: 390,
+            speedMin: 160,
+            speedMax: 400,
+            lifeMs: 310,
             color: 0xffaa33,
             size: 4,
             alpha: 0.9,
