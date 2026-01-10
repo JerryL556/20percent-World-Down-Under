@@ -282,15 +282,15 @@ export const weaponCores = [
     name: 'Lightweight Bullet',
     onlyFor: 'minigun',
     desc: [
-      '- Damage reduced to 7',
-      '+ Move speed while firing increased to 50%',
+      '- Damage reduced to 6',
+      '+ Move speed while firing increased to 70%',
     ].join('\n'),
     apply: (w) => {
       if (!w || w.id !== 'minigun') return w;
       return {
         ...w,
-        damage: 7,
-        _firingMoveMult: 0.5,
+        damage: 6,
+        _firingMoveMult: 0.7,
       };
     },
   },

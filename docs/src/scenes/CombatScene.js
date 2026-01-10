@@ -3744,7 +3744,7 @@ export default class CombatScene extends Phaser.Scene {
       let firingSlow = 1;
       if (this._minigunFiringUntil && now < this._minigunFiringUntil) {
         const w = getEffectiveWeapon(this.gs, this.gs.activeWeapon);
-        firingSlow = (typeof w._firingMoveMult === 'number') ? w._firingMoveMult : 0.25;
+        firingSlow = (typeof w._firingMoveMult === 'number') ? w._firingMoveMult : 0.3;
       }
       const speed = 200 * (eff.moveSpeedMult || 1) * firingSlow;
       (this.playerCollider || this.player).setVelocity(mv.x * speed, mv.y * speed);
