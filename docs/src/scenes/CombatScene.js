@@ -391,15 +391,18 @@ export default class CombatScene extends Phaser.Scene {
     if (!caster) return;
     const breakingStealth = this.isStealthed();
     if (breakingStealth) this.endStealthDecoy();
-    const meleeDmg = breakingStealth ? 40 : 10;
+    const meleeDmg = breakingStealth ? 100 : 10;
     const ptr = this.inputMgr.pointer;
     const ang = Math.atan2(ptr.worldY - caster.y, ptr.worldX - caster.x);
     const totalDeg = 150; const half = Phaser.Math.DegToRad(totalDeg / 2);
     const range = 48;
     this._meleeAlt = !this._meleeAlt;
-    // Simple transparent fan to indicate affected area (white)
+    // Simple transparent fan to indicate affected area (white by default, blue on stealth-break)
     // Swing VFX length 90ms to match enemy
-    try { this.spawnMeleeVfx(caster, ang, totalDeg, 90, 0xffffff, range, this._meleeAlt); } catch (_) {}
+    try {
+      const color = breakingStealth ? 0x66ccff : 0xffffff;
+      this.spawnMeleeVfx(caster, ang, totalDeg, 90, color, range, this._meleeAlt);
+    } catch (_) {}
     // Damage check against enemies (~45ms after start)
     try {
       this.time.delayedCall(45, () => {
@@ -8194,19 +8197,23 @@ export default class CombatScene extends Phaser.Scene {
   }
 
   _explodeStealthDecoy(x, y) {
-    const radius = 100;
+    const radius = 120;
     try { impactBurst(this, x, y, { color: 0x66ccff, size: 'large', radius }); } catch (_) {}
     try {
       const r2 = radius * radius;
       const arr = this.enemies?.getChildren?.() || [];
       for (let i = 0; i < arr.length; i += 1) {
-        const e = arr[i]; if (!e?.active || e.isDummy) continue;
+        const e = arr[i]; if (!e?.active) continue;
         const dx = e.x - x; const dy = e.y - y;
         if ((dx * dx + dy * dy) <= r2) {
-          if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
-          e.hp -= 30;
-          try { this._flashEnemyHit?.(e); } catch (_) {}
-          if (e.hp <= 0) this.killEnemy?.(e);
+          if (e.isDummy) {
+            this._dummyDamage = (this._dummyDamage || 0) + 30;
+          } else {
+            if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
+            e.hp -= 30;
+            try { this._flashEnemyHit?.(e); } catch (_) {}
+            if (e.hp <= 0) this.killEnemy?.(e);
+          }
         }
       }
     } catch (_) {}
@@ -8221,6 +8228,24 @@ export default class CombatScene extends Phaser.Scene {
     try { decoy.setFlipX(!!this.player?.flipX); } catch (_) {}
     this._stealth = { active: true, until: now + 4000, decoy };
     this._setPlayerStealthVisible(false);
+    // Blue smoke burst on activation
+    try {
+      const cx = this.player.x; const cy = this.player.y;
+      for (let i = 0; i < 42; i += 1) {
+        const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        pixelSparks(this, cx, cy, {
+          angleRad: a,
+          count: 1,
+          spreadDeg: 16,
+          speedMin: 20,
+          speedMax: 120,
+          lifeMs: 700,
+          color: 0x66ccff,
+          size: 4,
+          alpha: 0.7,
+        });
+      }
+    } catch (_) {}
   }
 
   endStealthDecoy() {
