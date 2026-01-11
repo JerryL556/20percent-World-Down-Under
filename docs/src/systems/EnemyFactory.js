@@ -186,7 +186,7 @@ function _attachEnemyVisuals(e, keyNormal, keyCharge = null, bodyW = null, bodyH
         if (!sc || !e.active) return;
         // For Heal Drones, face their owner boss; otherwise face the player like other enemies
         const ownerBoss = (e.isHealDrone && e._ownerBoss && e._ownerBoss.active) ? e._ownerBoss : null;
-        const target = ownerBoss || sc.player;
+        const target = ownerBoss || (sc.getEnemyTarget ? sc.getEnemyTarget() : sc.player);
         if (!target) return;
         const faceLeft = (target.x < e.x);
         try { e._vis?.setFlipX?.(faceLeft); } catch (_) {}

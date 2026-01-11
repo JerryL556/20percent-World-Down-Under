@@ -32,6 +32,16 @@ export const abilityDefs = [
       'Mines are green blocks, persist until triggered, and detonate for 30 dmg and 20 stun (60px radius) when an enemy enters 40px.',
     ].join('\n'),
   },
+  {
+    id: 'stealth_decoy',
+    name: 'Stealth Decoy',
+    desc: [
+      'Enter stealth for 4s and leave a decoy where you stand.',
+      'Enemies target the decoy while you are invisible.',
+      'Firing or melee ends stealth; the decoy explodes for 30 dmg (100px).',
+      'The melee that breaks stealth deals 4x damage.',
+    ].join('\n'),
+  },
 ];
 
 export function getAbilityById(id) {

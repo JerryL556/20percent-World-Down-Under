@@ -1279,7 +1279,7 @@ export default class UIScene extends Phaser.Scene {
       } else if (cat === 'abilities') {
         header.setText('Abilities');
         // Pricing for purchasable abilities (ADS is owned by default)
-        const abilityPrices = { bits: 250, repulse: 200, caustic_cluster: 160, landmine_dispenser: 180 };
+        const abilityPrices = { bits: 250, repulse: 200, caustic_cluster: 160, landmine_dispenser: 180, stealth_decoy: 400 };
         const owned = Array.isArray(gs.ownedAbilities) ? gs.ownedAbilities : ['ads'];
 
         abilityDefs.forEach((a) => {

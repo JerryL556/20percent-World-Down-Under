@@ -389,6 +389,9 @@ export default class CombatScene extends Phaser.Scene {
   performPlayerMelee() {
     const caster = this.player;
     if (!caster) return;
+    const breakingStealth = this.isStealthed();
+    if (breakingStealth) this.endStealthDecoy();
+    const meleeDmg = breakingStealth ? 40 : 10;
     const ptr = this.inputMgr.pointer;
     const ang = Math.atan2(ptr.worldY - caster.y, ptr.worldX - caster.x);
     const totalDeg = 150; const half = Phaser.Math.DegToRad(totalDeg / 2);
@@ -411,12 +414,12 @@ export default class CombatScene extends Phaser.Scene {
           const diff = Math.abs(Phaser.Math.Angle.Wrap(dir - ang));
           if (diff <= half) {
             if (e.isDummy) {
-              this._dummyDamage = (this._dummyDamage || 0) + 10;
+              this._dummyDamage = (this._dummyDamage || 0) + meleeDmg;
               // Show universal hit VFX for dummy in shooting range
               try { impactBurst(this, e.x, e.y, { color: 0xffffff, size: 'small' }); } catch (_) {}
             } else {
               if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
-              e.hp -= 10;
+              e.hp -= meleeDmg;
               try { this._flashEnemyHit(e); } catch (_) {}
               if (e.hp <= 0) { try { this.killEnemy(e); } catch (_) {} }
               // Universal melee hit VFX on enemy
@@ -1966,6 +1969,7 @@ export default class CombatScene extends Phaser.Scene {
     // Ability system state (cooldown etc.)
     this._gadgets = [];
     this.ability = { onCooldownUntil: 0 };
+    this._stealth = { active: false, until: 0, decoy: null };
     
   }
 
@@ -2705,6 +2709,7 @@ export default class CombatScene extends Phaser.Scene {
   }
 
   shoot() {
+    if (this.isStealthed()) this.endStealthDecoy();
     const gs = this.gs;
     const weapon = getEffectiveWeapon(gs, gs.activeWeapon);
     // Trigger per-weapon recoil kick (no recoil for laser handled elsewhere)
@@ -3789,6 +3794,13 @@ export default class CombatScene extends Phaser.Scene {
       this.registry.set('reloadActive', false);
     }
 
+    // Stealth decoy timeout cleanup
+    if (this.isStealthed()) {
+      if (!this._stealth?.decoy?.active || now >= (this._stealth?.until || 0)) {
+        this.endStealthDecoy();
+      }
+    }
+
     // Shooting Range interactions
     if (this.gs?.shootingRange) {
       // Update dummy label position and text
@@ -3902,6 +3914,7 @@ export default class CombatScene extends Phaser.Scene {
     const edgeDown = (!this._lmbWasDown) && !!ptr.isDown && ((ptr.buttons & 1) === 1);
     const wantsClick = !!ptr.justDown || edgeDown;
     if (!loadoutOpen) {
+      if (this.isStealthed() && this.inputMgr.isLMBDown) this.endStealthDecoy();
       if (isRail) {
         this.handleRailgunCharge(this.time.now, weapon, ptr);
       }
@@ -4010,6 +4023,10 @@ export default class CombatScene extends Phaser.Scene {
         } else if (abilityId === 'landmine_dispenser') {
           this.deployLandmineDispenser();
           this.ability.cooldownMs = 15000; // 15s
+          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+        } else if (abilityId === 'stealth_decoy') {
+          this.startStealthDecoy();
+          this.ability.cooldownMs = 10000;
           this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
         }
       }
@@ -4850,11 +4867,14 @@ export default class CombatScene extends Phaser.Scene {
       } catch (_) {}
     }
 
-    // Hazel Phase Bomb ability: player-following line + timed bombs
+    // Hazel Phase Bomb ability: target-following line + timed bombs
     try {
       const plan = this._hzPhasePlan;
       if (plan && plan.active) {
         const now = this.time.now;
+        const target = this.getEnemyTarget();
+        const tx = (target && typeof target.x === 'number') ? target.x : this.player.x;
+        const ty = (target && typeof target.y === 'number') ? target.y : this.player.y;
         // Ensure player-following purple line appears after 0.5s
         if (!this._hzPhasePlayerLine && now >= (plan.startedAt || 0) + 500) {
           const g = this.add.graphics();
@@ -4865,11 +4885,11 @@ export default class CombatScene extends Phaser.Scene {
         if (this._hzPhasePlayerLine) {
           try {
             const g = this._hzPhasePlayerLine;
-            const x = this.player.x;
+            const x = tx;
             const rect = this.arenaRect || new Phaser.Geom.Rectangle(0, 0, this.scale.width, this.scale.height);
             g.clear();
-            const segTop = Math.max(rect.top + 4, this.player.y - 32);
-            const segBottom = Math.max(segTop, this.player.y - 8);
+            const segTop = Math.max(rect.top + 4, ty - 32);
+            const segBottom = Math.max(segTop, ty - 8);
             g.lineStyle(2, 0xaa66ff, 0.9);
             g.beginPath();
             g.moveTo(x, segTop);
@@ -4881,8 +4901,8 @@ export default class CombatScene extends Phaser.Scene {
         if (plan.bombsSpawned < 20 && now >= (plan.nextBombAt || 0)) {
           const ang = Phaser.Math.FloatBetween(0, Math.PI * 2);
           const r = Phaser.Math.Between(60, 140);
-          let px = this.player.x + Math.cos(ang) * r;
-          let py = this.player.y + Math.sin(ang) * r;
+          let px = tx + Math.cos(ang) * r;
+          let py = ty + Math.sin(ang) * r;
           try {
             const rect = this.arenaRect || new Phaser.Geom.Rectangle(16, 16, this.scale.width - 32, this.scale.height - 32);
             px = Phaser.Math.Clamp(px, rect.left + 8, rect.right - 8);
@@ -5076,6 +5096,9 @@ export default class CombatScene extends Phaser.Scene {
       if (e.isDnMine) { try { e.body?.setVelocity?.(0, 0); } catch (_) {} return; }
       const now = this.time.now;
       const dt = (this.game?.loop?.delta || 16.7) / 1000; // seconds
+      const target = this.getEnemyTarget();
+      const targetX = (target && typeof target.x === 'number') ? target.x : this.player.x;
+      const targetY = (target && typeof target.y === 'number') ? target.y : this.player.y;
       // Bigwig/Dandelion/Hazel: freeze completely during certain boss abilities (movement handled in boss AI)
       try {
         const isBigwig = e.isBoss && (e.bossType === 'Bigwig' || e._bossId === 'Bigwig');
@@ -5111,8 +5134,8 @@ export default class CombatScene extends Phaser.Scene {
           const straightUntil = e._hzStraightUntil || 0;
           // During initial straight phase, keep current angle; afterwards, enable homing turn toward player
           if (!straightUntil || nowHz >= straightUntil) {
-            const dxm = this.player.x - e.x;
-            const dym = this.player.y - e.y;
+            const dxm = targetX - e.x;
+            const dym = targetY - e.y;
             let desired = Math.atan2(dym, dxm);
             // Unwrap desired relative to current angle to avoid sudden flips around ±π
             if (typeof e._angle === 'number') {
@@ -5133,8 +5156,8 @@ export default class CombatScene extends Phaser.Scene {
             }
           } else if (typeof e._angle !== 'number') {
             // Failsafe: ensure we have some angle even during straight phase
-            const dxm = this.player.x - e.x;
-            const dym = this.player.y - e.y;
+            const dxm = targetX - e.x;
+            const dym = targetY - e.y;
             e._angle = Math.atan2(dym, dxm);
           }
           const vx = Math.cos(e._angle) * (e._speed || 160);
@@ -5166,7 +5189,7 @@ export default class CombatScene extends Phaser.Scene {
           }
           // Proximity detonation: 15px sensor radius
           const rSense = 15; const rSense2 = rSense * rSense;
-          const pdx = this.player.x - e.x; const pdy = this.player.y - e.y;
+          const pdx = targetX - e.x; const pdy = targetY - e.y;
           if ((pdx * pdx + pdy * pdy) <= rSense2) {
             this._explodeHazelMissile(e);
             return;
@@ -5296,7 +5319,7 @@ export default class CombatScene extends Phaser.Scene {
         // Laser Drones: BIT-style hover around the player and sweep a Prism-style laser
         if (e.isLaserDrone) {
           try {
-            const player = this.player;
+            const player = target;
             if (!player || !player.active) {
               try { e.destroy(); } catch (_) {}
               return;
@@ -5396,6 +5419,7 @@ export default class CombatScene extends Phaser.Scene {
                 this.renderPrismBeam(e, ang, dtMs / 1000, {
                   applyDamage: true,
                   damagePlayer: true,
+                  target,
                   dps: 30,
                   tick: 0.05,
                 });
@@ -5413,8 +5437,8 @@ export default class CombatScene extends Phaser.Scene {
         // Turrets: fully stationary enemies with custom firing + aim logic
         if (e.isTurret) {
         const nowT = this.time.now;
-        const dxT = this.player.x - e.x;
-        const dyT = this.player.y - e.y;
+        const dxT = targetX - e.x;
+        const dyT = targetY - e.y;
         const distT = Math.hypot(dxT, dyT) || 1;
         const fwdX = dxT / distT;
         const fwdY = dyT / distT;
@@ -5433,7 +5457,7 @@ export default class CombatScene extends Phaser.Scene {
             head.y = e.y - baseH * 0.14;
           }
           // Flip base horizontally depending on player side (asset faces left by default)
-          const facingRight = this.player.x >= e.x;
+          const facingRight = targetX >= e.x;
           const sx = facingRight ? -Math.abs(base?.scaleX || 1) : Math.abs(base?.scaleX || 1);
           if (base) base.scaleX = sx;
           // Flip head vertically when player is on the right so its silhouette matches both sides
@@ -5460,7 +5484,7 @@ export default class CombatScene extends Phaser.Scene {
           g.lineStyle(1, 0xff2222, 1);
           g.beginPath();
           g.moveTo(hx, hy);
-          g.lineTo(this.player.x, this.player.y);
+          g.lineTo(targetX, targetY);
           g.strokePath();
           e._turretMuzzleX = hx;
           e._turretMuzzleY = hy;
@@ -5482,7 +5506,7 @@ export default class CombatScene extends Phaser.Scene {
           const hx = (typeof e._turretMuzzleX === 'number') ? e._turretMuzzleX : (head ? head.x : e.x);
           const hy = (typeof e._turretMuzzleY === 'number') ? e._turretMuzzleY : (head ? head.y : e.y);
           // Precise aim: no spread for turret shots
-          const angShot = Math.atan2(this.player.y - hy, this.player.x - hx);
+          const angShot = Math.atan2(targetY - hy, targetX - hx);
           const speed = 420; // much faster turret bullets
           const vx = Math.cos(angShot) * speed;
           const vy = Math.sin(angShot) * speed;
@@ -5569,8 +5593,8 @@ export default class CombatScene extends Phaser.Scene {
         } catch (_) {}
         return;
       }
-      const dx = this.player.x - e.x;
-      const dy = this.player.y - e.y;
+      const dx = targetX - e.x;
+      const dy = targetY - e.y;
       const dist = Math.hypot(dx, dy) || 1;
       const nx = dx / dist;
       const ny = dy / dist;
@@ -5774,13 +5798,13 @@ export default class CombatScene extends Phaser.Scene {
         }
         // Pathfinding when LOS to player is blocked
         let usingPath = false;
-        const losBlocked = this.isLineBlocked(e.x, e.y, this.player.x, this.player.y);
+        const losBlocked = this.isLineBlocked(e.x, e.y, targetX, targetY);
         if (losBlocked && this._nav?.grid) {
           const needRepath = (!e._path || (e._pathIdx == null) || (e._pathIdx >= e._path.length) || (now - (e._lastPathAt || 0) > ((e.isGrenadier && e._charging) ? 300 : 800)));
           if (needRepath) {
             try {
               const [sgx, sgy] = worldToGrid(this._nav.grid, e.x, e.y);
-              const [ggx, ggy] = worldToGrid(this._nav.grid, this.player.x, this.player.y);
+              const [ggx, ggy] = worldToGrid(this._nav.grid, targetX, targetY);
               e._path = findPath(this._nav.grid, sgx, sgy, ggx, ggy) || null;
               e._pathIdx = 0; e._lastPathAt = now;
             } catch (_) {}
@@ -5947,12 +5971,12 @@ export default class CombatScene extends Phaser.Scene {
         if (now - e._lastPosT > 400) {
           const md = Math.hypot((e.x - (e._lx || e.x)), (e.y - (e._ly || e.y)));
           e._lx = e.x; e._ly = e.y; e._lastPosT = now;
-          const stuckWhileCharging = (e.isGrenadier && e._charging && md < 3); if ((md < 2 && this.isLineBlocked(e.x, e.y, this.player.x, this.player.y)) || stuckWhileCharging) { e._path = null; e._pathIdx = 0; e._lastPathAt = 0; }
+          const stuckWhileCharging = (e.isGrenadier && e._charging && md < 3); if ((md < 2 && this.isLineBlocked(e.x, e.y, targetX, targetY)) || stuckWhileCharging) { e._path = null; e._pathIdx = 0; e._lastPathAt = 0; }
         }
       }
       // Grenadier: detonate if player within trigger radius while charging
       if (e.isGrenadier && e._charging) {
-        const dxp = this.player.x - e.x; const dyp = this.player.y - e.y;
+        const dxp = targetX - e.x; const dyp = targetY - e.y;
         const trig = (e.detonateTriggerRadius || 40);
         if ((dxp * dxp + dyp * dyp) <= (trig * trig)) {
           try { this.killEnemy(e); } catch (_) {}
@@ -5985,7 +6009,7 @@ export default class CombatScene extends Phaser.Scene {
             e._prismState = 'beam';
             e._beamUntil = nowT + 1500; // 1.5s
             // Lock beam angle at start toward player
-            e._beamAngle = Math.atan2((this.player.y - e.y), (this.player.x - e.x));
+            e._beamAngle = Math.atan2((targetY - e.y), (targetX - e.x));
             try { e._aimG?.clear(); } catch (_) {}
             if (!e._laserG) { e._laserG = this.add.graphics(); try { e._laserG.setDepth(8000); e._laserG.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {} }
             e._beamTickAccum = 0;
@@ -6004,20 +6028,21 @@ export default class CombatScene extends Phaser.Scene {
           // Update aim line
           if (e._prismState === 'aim') {
             if (e._aimG) {
-              try { e._aimG.clear(); e._aimG.lineStyle(1, 0xff2222, 1); e._aimG.beginPath(); e._aimG.moveTo(e.x, e.y); e._aimG.lineTo(this.player.x, this.player.y); e._aimG.strokePath(); } catch (_) {}
+              try { e._aimG.clear(); e._aimG.lineStyle(1, 0xff2222, 1); e._aimG.beginPath(); e._aimG.moveTo(e.x, e.y); e._aimG.lineTo(targetX, targetY); e._aimG.strokePath(); } catch (_) {}
             }
           }
           // Draw and apply beam damage (beam follows player during fire)
           if (e._prismState === 'beam') {
             // Continuous narrow beam (aimed at player)
-            e._beamAngle = Math.atan2((this.player.y - e.y), (this.player.x - e.x));
-            this.renderPrismBeam(e, e._beamAngle, (this.game?.loop?.delta || 16.7) / 1000, {
-              applyDamage: true,
-              damagePlayer: true,
-              // Focused beam: lower DPS
-              dps: 5,
-              tick: 0.05,
-            });
+            e._beamAngle = Math.atan2((targetY - e.y), (targetX - e.x));
+                this.renderPrismBeam(e, e._beamAngle, (this.game?.loop?.delta || 16.7) / 1000, {
+                  applyDamage: true,
+                  damagePlayer: true,
+                  target,
+                  // Focused beam: lower DPS
+                  dps: 5,
+                  tick: 0.05,
+                });
           }
           // Sweeping laser while idle
           if (e._prismState === 'idle' || !e._prismState) {
@@ -6034,12 +6059,12 @@ export default class CombatScene extends Phaser.Scene {
                   e._aimG.lineStyle(1, 0xff2222, 1);
                   e._aimG.beginPath();
                   e._aimG.moveTo(e.x, e.y);
-                  e._aimG.lineTo(this.player.x, this.player.y);
+                  e._aimG.lineTo(targetX, targetY);
                   e._aimG.strokePath();
                 } catch (_) {}
               } else {
                 e._sweepActive = true;
-                const base = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+                const base = Math.atan2(targetY - e.y, targetX - e.x);
                 // Sweeping beam: 80 degrees total, slower
                 e._sweepFrom = base - Phaser.Math.DegToRad(40);
                 e._sweepTo = base + Phaser.Math.DegToRad(40);
@@ -6060,6 +6085,7 @@ export default class CombatScene extends Phaser.Scene {
               this.renderPrismBeam(e, ang, dtMs / 1000, {
                 applyDamage: true,
                 damagePlayer: true,
+                target,
                 // Sweeping beam: increased DPS with faster ticks
                 dps: 60,
                 tick: 0.025,
@@ -6082,7 +6108,7 @@ export default class CombatScene extends Phaser.Scene {
             // When Prism is not firing a laser, draw brief exhaust if cooling timer is active
             if ((e._prismCoolUntil || 0) > nowT && e._prismState !== 'beam') {
               try {
-                const facingRight = this.player.x >= e.x;
+                const facingRight = targetX >= e.x;
                 const back = facingRight ? Math.PI : 0;
                 const tail = 10;
                 const tx = e.x + Math.cos(back) * tail;
@@ -6174,7 +6200,7 @@ export default class CombatScene extends Phaser.Scene {
               for (let i = 0; i < 3; i += 1) {
                 this.time.delayedCall(i * 300, () => {
                   if (!e.active) return;
-                  const tx = this.player.x; const ty = this.player.y;
+                  const tx = targetX; const ty = targetY;
                   this.throwEnemyGrenade(e, tx, ty);
                   if (i === 2) { e._castingGrenades = false; }
                 });
@@ -6353,7 +6379,7 @@ export default class CombatScene extends Phaser.Scene {
             e._aimG.lineStyle(1, 0xff2222, 1); // thinner sniper aim line
             e._aimG.beginPath();
             e._aimG.moveTo(e.x, e.y);
-            e._aimG.lineTo(this.player.x, this.player.y);
+            e._aimG.lineTo(targetX, targetY);
             e._aimG.strokePath();
           } catch (_) {}
           if (now - (e.aimStartedAt || 0) >= (e.aimDurationMs || 1000)) {
@@ -6665,6 +6691,7 @@ export default class CombatScene extends Phaser.Scene {
     const damagePlayer = opts.damagePlayer !== undefined ? opts.damagePlayer : true;
     const dps = (typeof opts.dps === 'number') ? opts.dps : 34;
     const tick = (typeof opts.tick === 'number' && opts.tick > 0) ? opts.tick : dt; // default to per-frame
+    const target = opts.target || this.player;
     try { if (!e._laserG) { e._laserG = this.add.graphics(); e._laserG.setDepth(8000); e._laserG.setBlendMode(Phaser.BlendModes.ADD); } } catch (_) {}
     const g = e._laserG;
     try { g.clear(); } catch (_) {}
@@ -6674,8 +6701,8 @@ export default class CombatScene extends Phaser.Scene {
     // Clip beam visually to player if it hits them, so the beam doesn't draw past the hit point
     try {
       const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
-      const rectPFull = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
-      const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectPFull);
+      const rectTFull = target?.getBounds?.() || new Phaser.Geom.Rectangle((target?.x || 0) - 6, (target?.y || 0) - 6, 12, 12);
+      const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectTFull);
       if (pts && pts.length) {
         ex = pts[0].x;
         ey = pts[0].y;
@@ -6817,7 +6844,10 @@ export default class CombatScene extends Phaser.Scene {
   updateBossAI() {
     const e = this.boss; if (!e || !e.active) return;
     const now = this.time.now;
-    const dx = this.player.x - e.x; const dy = this.player.y - e.y;
+    const target = this.getEnemyTarget();
+    const targetX = (target && typeof target.x === 'number') ? target.x : this.player.x;
+    const targetY = (target && typeof target.y === 'number') ? target.y : this.player.y;
+    const dx = targetX - e.x; const dy = targetY - e.y;
     const angToPlayer = Math.atan2(dy, dx);
     const fireBullet = (angle, speed = 260, damage = e.damage, tint = 0xffaa00, size = 2) => {
       const b = this.enemyBullets.get(e.x, e.y, 'bullet');
@@ -7012,8 +7042,8 @@ export default class CombatScene extends Phaser.Scene {
               // and extend arrows well past the player (visually \"infinite\" in-arena)
               let nx = 0; let ny = 0; let len = 0;
               try {
-                const dxp = this.player.x - sx;
-                const dyp = this.player.y - sy;
+                const dxp = targetX - sx;
+                const dyp = targetY - sy;
                 const dist = Math.hypot(dxp, dyp) || 1;
                 nx = dxp / dist;
                 ny = dyp / dist;
@@ -7062,8 +7092,8 @@ export default class CombatScene extends Phaser.Scene {
           const dashSpeed = e._dnAssaultDashSpeed || 800;
           let nx = 0; let ny = 0;
           try {
-            const dxp = this.player.x - e.x;
-            const dyp = this.player.y - e.y;
+            const dxp = targetX - e.x;
+            const dyp = targetY - e.y;
             let len = Math.hypot(dxp, dyp) || 1;
             nx = dxp / len;
             ny = dyp / len;
@@ -7101,8 +7131,8 @@ export default class CombatScene extends Phaser.Scene {
           // Check melee trigger or 1s cap
           let withinMelee = false;
           try {
-            const dxp = this.player.x - e.x;
-            const dyp = this.player.y - e.y;
+            const dxp = targetX - e.x;
+            const dyp = targetY - e.y;
             const d = Math.hypot(dxp, dyp) || 1;
             const meleeR = 48;
             if (d <= meleeR) withinMelee = true;
@@ -7156,7 +7186,7 @@ export default class CombatScene extends Phaser.Scene {
           // Lay mines in a 3-mine fan facing the player at fixed intervals
           if (nowDn >= (e._dnAssaultNextMineAt || 0)) {
             try {
-              const px = this.player.x; const py = this.player.y;
+              const px = targetX; const py = targetY;
               const dxp = px - e.x; const dyp = py - e.y;
               const baseAng = Math.atan2(dyp, dxp);
               const spread = Phaser.Math.DegToRad(35); // total 70 fan (35)
@@ -7220,8 +7250,8 @@ export default class CombatScene extends Phaser.Scene {
           e._dnAssaultWindupStartAt = nowDn;
           // Compute initial in/out directions from current player position (fixed for whole windup)
           try {
-            const dxp = this.player.x - e.x;
-            const dyp = this.player.y - e.y;
+            const dxp = targetX - e.x;
+            const dyp = targetY - e.y;
             let len = Math.hypot(dxp, dyp) || 1;
             const nx = dxp / len;
             const ny = dyp / len;
@@ -7249,7 +7279,7 @@ export default class CombatScene extends Phaser.Scene {
           g.lineStyle(1, 0xff3333, 1);
           g.beginPath();
           g.moveTo(e.x, e.y);
-          g.lineTo(this.player.x, this.player.y);
+          g.lineTo(targetX, targetY);
           g.strokePath();
         } catch (_) {}
         if (now >= (e._dnSpecialAimUntil || 0)) {
@@ -7269,18 +7299,20 @@ export default class CombatScene extends Phaser.Scene {
           e._dnAfterVfxUntil = now + 2000; // 2s strong exhaust VFX after special
         } else if (now >= (e._dnNextShotAt || 0)) {
           // Sample a true lagged target position from history (e.g., ~300ms ago)
-          let txP = this.player.x;
-          let tyP = this.player.y;
+          let txP = targetX;
+          let tyP = targetY;
           try {
-            const hist = this._playerPosHistory || [];
-            if (hist.length) {
-              const targetMs = now - (e._dnTargetLagMs || 300);
-              let best = hist[0];
-              for (let i = 1; i < hist.length; i += 1) {
-                const h = hist[i];
-                if (Math.abs(h.t - targetMs) < Math.abs(best.t - targetMs)) best = h;
+            if (target === this.player) {
+              const hist = this._playerPosHistory || [];
+              if (hist.length) {
+                const targetMs = now - (e._dnTargetLagMs || 300);
+                let best = hist[0];
+                for (let i = 1; i < hist.length; i += 1) {
+                  const h = hist[i];
+                  if (Math.abs(h.t - targetMs) < Math.abs(best.t - targetMs)) best = h;
+                }
+                txP = best.x; tyP = best.y;
               }
-              txP = best.x; tyP = best.y;
             }
           } catch (_) {}
           // Fire one laser shot
@@ -7439,8 +7471,8 @@ export default class CombatScene extends Phaser.Scene {
       } else if (e._dnSpecialState === 'idle' && e._dnAssaultState === 'idle' && now >= (e._dnDashNextAt || 0)) {
         // Eligible to start a new dash: sideways relative to player, with random side
         try {
-          const dxp = this.player.x - e.x;
-          const dyp = this.player.y - e.y;
+          const dxp = targetX - e.x;
+          const dyp = targetY - e.y;
           let len = Math.hypot(dxp, dyp) || 1;
           const nx = dxp / len;
           const ny = dyp / len;
@@ -7481,7 +7513,7 @@ export default class CombatScene extends Phaser.Scene {
             g.lineStyle(1, 0xff3333, 1);
             g.beginPath();
             g.moveTo(e.x, e.y);
-            g.lineTo(this.player.x, this.player.y);
+            g.lineTo(targetX, targetY);
             g.strokePath();
           }
         } catch (_) {}
@@ -7503,18 +7535,20 @@ export default class CombatScene extends Phaser.Scene {
           e._dnVfxUntil = now + 1000; // 1s of exhaust VFX during cooldown
         } else if (now >= (e._dnNextShotAt || 0)) {
           // Use same lagged target logic as special: aim where player was ~300ms ago
-          let txP = this.player.x;
-          let tyP = this.player.y;
+          let txP = targetX;
+          let tyP = targetY;
           try {
-            const hist = this._playerPosHistory || [];
-            if (hist.length) {
-              const targetMs = now - (e._dnTargetLagMs || 300);
-              let best = hist[0];
-              for (let i = 1; i < hist.length; i += 1) {
-                const h = hist[i];
-                if (Math.abs(h.t - targetMs) < Math.abs(best.t - targetMs)) best = h;
+            if (target === this.player) {
+              const hist = this._playerPosHistory || [];
+              if (hist.length) {
+                const targetMs = now - (e._dnTargetLagMs || 300);
+                let best = hist[0];
+                for (let i = 1; i < hist.length; i += 1) {
+                  const h = hist[i];
+                  if (Math.abs(h.t - targetMs) < Math.abs(best.t - targetMs)) best = h;
+                }
+                txP = best.x; tyP = best.y;
               }
-              txP = best.x; tyP = best.y;
             }
           } catch (_) {}
           const base = Math.atan2(tyP - e.y, txP - e.x);
@@ -7527,8 +7561,8 @@ export default class CombatScene extends Phaser.Scene {
             let hitX = ex; let hitY = ey;
             try {
               const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
-              const rectPFull = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
-              const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectPFull);
+              const rectTFull = target?.getBounds?.() || new Phaser.Geom.Rectangle(targetX - 6, targetY - 6, 12, 12);
+              const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectTFull);
               if (pts && pts.length) {
                 hitX = pts[0].x;
                 hitY = pts[0].y;
@@ -7618,7 +7652,7 @@ export default class CombatScene extends Phaser.Scene {
         } else if (now < (e._dnVfxUntil || 0)) {
           // Exhaust after a normal burst: medium-strength Hazel-style sparks
           try {
-            const facingRight = this.player.x >= e.x;
+            const facingRight = targetX >= e.x;
             const back = facingRight ? Math.PI : 0;
             const tail = 10;
             const tx = e.x + Math.cos(back) * tail;
@@ -7640,7 +7674,7 @@ export default class CombatScene extends Phaser.Scene {
       // Stronger exhaust immediately after special: larger, brighter, more spread (independent of sweep cooldown)
       if (now < (e._dnAfterVfxUntil || 0)) {
         try {
-          const facingRight = this.player.x >= e.x;
+          const facingRight = targetX >= e.x;
           const back = facingRight ? Math.PI : 0;
           const tail = 12;
           const tx = e.x + Math.cos(back) * tail;
@@ -7728,8 +7762,8 @@ export default class CombatScene extends Phaser.Scene {
       }
       if (e._bwAbilityState === 'postDelay') {
         if (now >= (e._bwAbilitySignalAt || 0)) {
-          const px = this.player.x;
-          const py = this.player.y;
+          const px = targetX;
+          const py = targetY;
           e._bwBombardmentCenter = { x: px, y: py };
           e._bwBombardmentRadius = 260; // fixed large radius around marker
           e._bwBombardmentActive = true;
@@ -7857,7 +7891,7 @@ export default class CombatScene extends Phaser.Scene {
           for (let i = 0; i < waves; i += 1) {
             this.time.delayedCall(i * waveDelay, () => {
               if (!e.active) return;
-              const px = this.player.x; const py = this.player.y;
+              const px = targetX; const py = targetY;
               const baseAng = Math.atan2(py - e.y, px - e.x);
               const offsets = [-1, 0, 1];
               for (let j = 0; j < offsets.length; j += 1) {
@@ -7958,8 +7992,8 @@ export default class CombatScene extends Phaser.Scene {
 
       // Teleport-away mechanic: if player stays within radius for 1s and Hazel is not using specials
       if (!e._hzSpecialActive && e._hzPhaseState !== 'channel' && e._hzLaserDroneState !== 'channel' && tpReady) {
-        const dxp = this.player.x - e.x;
-        const dyp = this.player.y - e.y;
+        const dxp = targetX - e.x;
+        const dyp = targetY - e.y;
         const distToPlayer = Math.hypot(dxp, dyp) || 0;
         if (distToPlayer <= 180) {
           if (!e._hzTpCloseSince) e._hzTpCloseSince = now;
@@ -8141,6 +8175,64 @@ export default class CombatScene extends Phaser.Scene {
       return (w.projectile === 'rocket') ? 1000 : 1500;
     } catch (_) {
       return 1500;
+    }
+  }
+
+  isStealthed() {
+    return !!(this._stealth && this._stealth.active);
+  }
+
+  getEnemyTarget() {
+    if (this._stealth?.active && this._stealth?.decoy?.active) return this._stealth.decoy;
+    return this.player;
+  }
+
+  _setPlayerStealthVisible(visible) {
+    const alpha = visible ? 1 : 0.4;
+    try { if (this.player) this.player.setAlpha(alpha); } catch (_) {}
+    try { if (this.weaponSprite) this.weaponSprite.setAlpha(alpha); } catch (_) {}
+  }
+
+  _explodeStealthDecoy(x, y) {
+    const radius = 100;
+    try { impactBurst(this, x, y, { color: 0x66ccff, size: 'large', radius }); } catch (_) {}
+    try {
+      const r2 = radius * radius;
+      const arr = this.enemies?.getChildren?.() || [];
+      for (let i = 0; i < arr.length; i += 1) {
+        const e = arr[i]; if (!e?.active || e.isDummy) continue;
+        const dx = e.x - x; const dy = e.y - y;
+        if ((dx * dx + dy * dy) <= r2) {
+          if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
+          e.hp -= 30;
+          try { this._flashEnemyHit?.(e); } catch (_) {}
+          if (e.hp <= 0) this.killEnemy?.(e);
+        }
+      }
+    } catch (_) {}
+  }
+
+  startStealthDecoy() {
+    if (this.isStealthed()) return;
+    const now = this.time.now;
+    const decoy = this.add.sprite(this.player.x, this.player.y, 'player_inle');
+    try { fitImageHeight(this, decoy, 24); } catch (_) {}
+    try { decoy.setDepth(9000); } catch (_) {}
+    try { decoy.setFlipX(!!this.player?.flipX); } catch (_) {}
+    this._stealth = { active: true, until: now + 4000, decoy };
+    this._setPlayerStealthVisible(false);
+  }
+
+  endStealthDecoy() {
+    if (!this.isStealthed()) return;
+    const decoy = this._stealth?.decoy;
+    this._stealth.active = false;
+    this._stealth.until = 0;
+    this._stealth.decoy = null;
+    this._setPlayerStealthVisible(true);
+    if (decoy && decoy.active) {
+      this._explodeStealthDecoy(decoy.x, decoy.y);
+      try { decoy.destroy(); } catch (_) {}
     }
   }
 
