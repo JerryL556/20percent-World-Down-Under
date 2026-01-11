@@ -1808,6 +1808,12 @@ export default class CombatScene extends Phaser.Scene {
     this.physics.add.collider(this.enemyGrenades, this.barricadesHard, (b, s) => this.onEnemyGrenadeHitBarricade(b, s));
     this.physics.add.collider(this.enemyGrenades, this.barricadesSoft, (b, s) => this.onEnemyGrenadeHitBarricade(b, s));
     this.physics.add.overlap(overlapPlayerRef, this.enemyBullets, (p, b) => {
+      if (this._directionalShieldBlocksProjectile(b)) {
+        this._directionalShieldAbsorb(b.damage || 8);
+        try { impactBurst(this, b.x, b.y, { color: 0xffee66, size: 'small' }); } catch (_) {}
+        try { b.destroy(); } catch (_) {}
+        return;
+      }
       const inIframes = this.time.now < this.player.iframesUntil;
       if (b?._rocket) {
         // Rocket: explode on contact, apply AoE to player
@@ -1870,6 +1876,12 @@ export default class CombatScene extends Phaser.Scene {
     });
     // Mirror overlap for invisible player hitbox (guard creation to avoid undefined references)
     if (this.playerHitbox && this.enemyBullets) this.physics.add.overlap(this.playerHitbox, this.enemyBullets, (_hb, b) => {
+      if (this._directionalShieldBlocksProjectile(b)) {
+        this._directionalShieldAbsorb(b.damage || 8);
+        try { impactBurst(this, b.x, b.y, { color: 0xffee66, size: 'small' }); } catch (_) {}
+        try { b.destroy(); } catch (_) {}
+        return;
+      }
       const inIframes = this.time.now < this.player.iframesUntil;
       if (b?._rocket) {
         const ex = b.x; const ey = b.y; const radius = b._blastRadius || 70; const r2 = radius * radius;
@@ -1987,6 +1999,7 @@ export default class CombatScene extends Phaser.Scene {
     this._gadgets = [];
     this.ability = { onCooldownUntil: 0 };
     this._stealth = { active: false, until: 0, decoy: null };
+    this._dirShield = { active: false, hp: 0, maxHp: 1000, decayPerSec: 100, g: null, breakG: null };
     
   }
 
@@ -4060,6 +4073,10 @@ export default class CombatScene extends Phaser.Scene {
           this.startStealthDecoy();
           this.ability.cooldownMs = noCd ? 1 : 10000;
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
+        } else if (abilityId === 'directional_shield') {
+          this.startDirectionalShield();
+          this.ability.cooldownMs = noCd ? 1 : 12000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         }
       }
     }
@@ -4127,6 +4144,54 @@ export default class CombatScene extends Phaser.Scene {
         const prog = active ? (1 - Math.min(1, remaining / denom)) : 1;
         this.registry.set('abilityCooldownActive', active);
         this.registry.set('abilityCooldownProgress', prog);
+      }
+    } catch (_) {}
+
+    // Directional Shield update: decay + render
+    try {
+      if (this._dirShield?.active) {
+        const dt = (this.game?.loop?.delta || 16.7) / 1000;
+        const decay = (this._dirShield.decayPerSec || 100) * dt;
+        this._dirShield.hp = Math.max(0, (this._dirShield.hp || 0) - decay);
+        if (this._dirShield.hp <= 0) {
+          this.stopDirectionalShield(true);
+        } else {
+          const g = this._dirShield.g || this.add.graphics();
+          this._dirShield.g = g;
+          const ptr = this.inputMgr?.pointer || this.input?.activePointer;
+          const ang = ptr ? Math.atan2(ptr.worldY - this.player.y, ptr.worldX - this.player.x) : this.playerFacing;
+          const radius = 48;
+          const half = Phaser.Math.DegToRad(45);
+          const t = Math.max(0, Math.min(1, (this._dirShield.hp || 0) / (this._dirShield.maxHp || 1000)));
+          const alpha = 0.15 + 0.75 * t; // lighter as HP drops
+          try {
+            g.clear();
+            g.setDepth(8800);
+            g.lineStyle(4, 0xffee66, alpha);
+            g.beginPath();
+            g.arc(this.player.x, this.player.y, radius, ang - half, ang + half);
+            g.strokePath();
+            g.lineStyle(2, 0xffdd66, alpha * 0.9);
+            g.beginPath();
+            g.arc(this.player.x, this.player.y, radius - 4, ang - half, ang + half);
+            g.strokePath();
+          } catch (_) {}
+          // Block enemy bullets within the arc (rook-style)
+          try {
+            const arrB = this.enemyBullets?.getChildren?.() || [];
+            for (let i = 0; i < arrB.length; i += 1) {
+              const b = arrB[i];
+              if (!b?.active || b._dsBlocked) continue;
+              if (!this._directionalShieldBlocksProjectile(b)) continue;
+              b._dsBlocked = true;
+              this._directionalShieldAbsorb(b.damage || 8);
+              try { impactBurst(this, b.x, b.y, { color: 0xffee66, size: 'small' }); } catch (_) {}
+              try { b.destroy(); } catch (_) {}
+            }
+          } catch (_) {}
+        }
+      } else {
+        try { this._dirShield?.g?.clear?.(); } catch (_) {}
       }
     } catch (_) {}
 
@@ -5165,8 +5230,16 @@ export default class CombatScene extends Phaser.Scene {
       } catch (_) {}
       // Hazel missiles: custom homing behavior, no nav/pathfinding
         if (e.isHazelMissile) {
-        try {
-          const dtMs = (this.game?.loop?.delta || 16.7);
+          try {
+            if (this._directionalShieldBlocksProjectile(e)) {
+              this._directionalShieldAbsorb(20);
+              try { impactBurst(this, e.x, e.y, { color: 0xffee66, size: 'small' }); } catch (_) {}
+              try { e._vis?.destroy(); } catch (_) {}
+              try { e._trailG?.destroy(); } catch (_) {}
+              try { e.destroy(); } catch (_) {}
+              return;
+            }
+            const dtMs = (this.game?.loop?.delta || 16.7);
           const dtHz = dtMs / 1000;
           const nowHz = this.time.now;
           const straightUntil = e._hzStraightUntil || 0;
@@ -6318,6 +6391,12 @@ export default class CombatScene extends Phaser.Scene {
               b.update = () => {
                 if (!b.active) return;
                 const now = this.time.now;
+                if (this._directionalShieldBlocksProjectile(b)) {
+                  this._directionalShieldAbsorb(b.damage || 12);
+                  try { impactBurst(this, b.x, b.y, { color: 0xffee66, size: 'small' }); } catch (_) {}
+                  try { b.destroy(); } catch (_) {}
+                  return;
+                }
                 const ex = b.x; const ey = b.y;
                 const radius = b._grenadeRadius || 70;
                 const r2 = radius * radius;
@@ -6592,6 +6671,12 @@ export default class CombatScene extends Phaser.Scene {
     b._targetX = targetX; b._targetY = targetY;
     b._grenade = true; b._grenadeRadius = 60; b.damage = (e?.damage || 10);
     b.update = () => {
+      if (this._directionalShieldBlocksProjectile(b)) {
+        this._directionalShieldAbsorb(b.damage || 10);
+        try { impactBurst(this, b.x, b.y, { color: 0xffee66, size: 'small' }); } catch (_) {}
+        try { b.destroy(); } catch (_) {}
+        return;
+      }
       const now = this.time.now;
       const dx = b.x - b._targetX; const dy = b.y - b._targetY;
       const near = (dx * dx + dy * dy) <= 18 * 18;
@@ -6736,6 +6821,9 @@ export default class CombatScene extends Phaser.Scene {
     // Compute end vs barricades, then render thicker dual-color beam
     const hit = this.computeEnemyLaserEnd(e.x, e.y, angle);
     let ex = hit.ex, ey = hit.ey;
+    const shieldHit = this._directionalShieldLineHit(e.x, e.y, ex, ey);
+    const shieldBlocked = !!shieldHit;
+    if (shieldHit) { ex = shieldHit.x; ey = shieldHit.y; }
     // Clip beam visually to player if it hits them, so the beam doesn't draw past the hit point
     try {
       const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
@@ -6771,7 +6859,7 @@ export default class CombatScene extends Phaser.Scene {
         // Check if beam line (clipped) hits player's bounds
         const line = new Phaser.Geom.Line(e.x, e.y, ex, ey);
         const rect = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
-        if (damagePlayer && Phaser.Geom.Intersects.LineToRectangle(line, rect)) {
+        if (!shieldBlocked && damagePlayer && Phaser.Geom.Intersects.LineToRectangle(line, rect)) {
             if (this.time.now >= (this.player.iframesUntil || 0)) {
             const dmg = Math.max(1, Math.round(dps * tick));
             this.applyPlayerDamage(dmg);
@@ -6784,6 +6872,9 @@ export default class CombatScene extends Phaser.Scene {
               this.scene.start(SceneKeys.Hub);
             }
           }
+        }
+        if (shieldBlocked) {
+          this._directionalShieldAbsorb(Math.max(1, Math.round(dps * tick)));
         }
         // Damage soft barricades intersecting the (clipped) beam
         try {
@@ -7360,17 +7451,22 @@ export default class CombatScene extends Phaser.Scene {
           try {
             const hit = this.computeEnemyLaserEnd(e.x, e.y, shotAng);
             const ex = hit.ex, ey = hit.ey;
-            // Clip beam visually to player if it hits them, so the beam doesn't draw past the hit point
             let hitX = ex; let hitY = ey;
-            try {
-              const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
-              const rectP = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
-              const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectP);
-              if (pts && pts.length) {
-                hitX = pts[0].x;
-                hitY = pts[0].y;
-              }
-            } catch (_) {}
+            const shieldHit = this._directionalShieldLineHit(e.x, e.y, ex, ey);
+            if (shieldHit) {
+              hitX = shieldHit.x; hitY = shieldHit.y;
+            } else {
+              // Clip beam visually to player if it hits them, so the beam doesn't draw past the hit point
+              try {
+                const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
+                const rectP = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
+                const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectP);
+                if (pts && pts.length) {
+                  hitX = pts[0].x;
+                  hitY = pts[0].y;
+                }
+              } catch (_) {}
+            }
             // Visual: intense red beam that fades quickly
             try {
               const g = this.add.graphics();
@@ -7422,7 +7518,7 @@ export default class CombatScene extends Phaser.Scene {
               // Player hit
               try {
                 const rectP = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
-                if (Phaser.Geom.Intersects.LineToRectangle(line, rectP)) {
+                if (!shieldHit && Phaser.Geom.Intersects.LineToRectangle(line, rectP)) {
                   if (this.time.now >= (this.player.iframesUntil || 0)) {
                     const dmg = 10;
                     this.applyPlayerDamage(dmg);
@@ -7438,6 +7534,7 @@ export default class CombatScene extends Phaser.Scene {
                   }
                 }
               } catch (_) {}
+              if (shieldHit) this._directionalShieldAbsorb(10);
               // Soft barricades: 100% damage (like regular beam, no half multiplier)
               try {
                 const arr = this.barricadesSoft?.getChildren?.() || [];
@@ -7595,17 +7692,22 @@ export default class CombatScene extends Phaser.Scene {
           try {
             const hit = this.computeEnemyLaserEnd(e.x, e.y, shotAng);
             const ex = hit.ex, ey = hit.ey;
-            // Clip beam visually to player if it hits them, so the beam doesn't draw past the hit point
             let hitX = ex; let hitY = ey;
-            try {
-              const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
-              const rectTFull = target?.getBounds?.() || new Phaser.Geom.Rectangle(targetX - 6, targetY - 6, 12, 12);
-              const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectTFull);
-              if (pts && pts.length) {
-                hitX = pts[0].x;
-                hitY = pts[0].y;
-              }
-            } catch (_) {}
+            const shieldHit = this._directionalShieldLineHit(e.x, e.y, ex, ey);
+            if (shieldHit) {
+              hitX = shieldHit.x; hitY = shieldHit.y;
+            } else {
+              // Clip beam visually to target if it hits them, so the beam doesn't draw past the hit point
+              try {
+                const lineFull = new Phaser.Geom.Line(e.x, e.y, ex, ey);
+                const rectTFull = target?.getBounds?.() || new Phaser.Geom.Rectangle(targetX - 6, targetY - 6, 12, 12);
+                const pts = Phaser.Geom.Intersects.GetLineToRectangle(lineFull, rectTFull);
+                if (pts && pts.length) {
+                  hitX = pts[0].x;
+                  hitY = pts[0].y;
+                }
+              } catch (_) {}
+            }
             // Visual: intense red beam that fades quickly
             try {
               const g = this.add.graphics();
@@ -7639,7 +7741,7 @@ export default class CombatScene extends Phaser.Scene {
               // Player hit
               try {
                 const rectP = this.player.getBounds?.() || new Phaser.Geom.Rectangle(this.player.x - 6, this.player.y - 6, 12, 12);
-                if (Phaser.Geom.Intersects.LineToRectangle(line, rectP)) {
+                if (!shieldHit && Phaser.Geom.Intersects.LineToRectangle(line, rectP)) {
                   if (this.time.now >= (this.player.iframesUntil || 0)) {
                     const dmg = 10;
                     this.applyPlayerDamage(dmg);
@@ -7655,6 +7757,7 @@ export default class CombatScene extends Phaser.Scene {
                   }
                 }
               } catch (_) {}
+              if (shieldHit) this._directionalShieldAbsorb(10);
               // Soft barricades: 30 damage, no reduction
               try {
                 const arr = this.barricadesSoft?.getChildren?.() || [];
@@ -8281,6 +8384,108 @@ export default class CombatScene extends Phaser.Scene {
         });
       }
     } catch (_) {}
+  }
+
+  startDirectionalShield() {
+    if (this._dirShield?.active) return;
+    if (!this._dirShield) this._dirShield = { active: false, hp: 0, maxHp: 1000, decayPerSec: 100, g: null, breakG: null };
+    this._dirShield.active = true;
+    this._dirShield.maxHp = 1000;
+    this._dirShield.hp = 1000;
+    this._dirShield.decayPerSec = 100;
+    try {
+      if (!this._dirShield.g) {
+        this._dirShield.g = this.add.graphics();
+        this._dirShield.g.setDepth(8800);
+      }
+    } catch (_) {}
+  }
+
+  stopDirectionalShield(breakNow = false) {
+    if (!this._dirShield) return;
+    if (breakNow) {
+      try {
+        const g = this.add.graphics();
+        g.setDepth(8800);
+        const cx = this.player.x; const cy = this.player.y;
+        g.lineStyle(4, 0xffee66, 0.9).strokeCircle(cx, cy, 38);
+        this.tweens.add({ targets: g, alpha: 0, scale: 1.6, duration: 220, ease: 'Quad.easeOut', onComplete: () => { try { g.destroy(); } catch (_) {} } });
+        for (let i = 0; i < 16; i += 1) {
+          const a = (i / 16) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.2, 0.2);
+          pixelSparks(this, cx, cy, { angleRad: a, count: 1, spreadDeg: 12, speedMin: 120, speedMax: 220, lifeMs: 220, color: 0xffee66, size: 2, alpha: 0.9 });
+        }
+      } catch (_) {}
+    }
+    this._dirShield.active = false;
+    this._dirShield.hp = 0;
+    try { this._dirShield.g?.clear(); } catch (_) {}
+  }
+
+  _directionalShieldAngle() {
+    try {
+      const ptr = this.inputMgr?.pointer || this.input?.activePointer;
+      if (!ptr || !this.player) return this.playerFacing || 0;
+      return Math.atan2(ptr.worldY - this.player.y, ptr.worldX - this.player.x);
+    } catch (_) {
+      return this.playerFacing || 0;
+    }
+  }
+
+  _directionalShieldParams() {
+    return { radius: 48, half: Phaser.Math.DegToRad(45), thickness: 8 };
+  }
+
+  _directionalShieldBlocksAngle(ang) {
+    const shieldAng = this._directionalShieldAngle();
+    const diff = Math.abs(Phaser.Math.Angle.Wrap(ang - shieldAng));
+    return diff <= this._directionalShieldParams().half;
+  }
+
+  _directionalShieldAbsorb(amount) {
+    if (!this._dirShield?.active) return false;
+    const dmg = Math.max(1, Math.floor(amount || 0));
+    this._dirShield.hp = Math.max(0, (this._dirShield.hp || 0) - dmg);
+    if (this._dirShield.hp <= 0) this.stopDirectionalShield(true);
+    return true;
+  }
+
+  _directionalShieldBlocksProjectile(obj) {
+    if (!this._dirShield?.active || !obj?.active) return false;
+    if (obj._bwBomb) return false;
+    const { radius, thickness } = this._directionalShieldParams();
+    const dx = obj.x - this.player.x;
+    const dy = obj.y - this.player.y;
+    const ang = Math.atan2(dy, dx);
+    if (!this._directionalShieldBlocksAngle(ang)) return false;
+    const d2 = dx * dx + dy * dy;
+    const maxR = radius + thickness;
+    return d2 <= (maxR * maxR);
+  }
+
+  _directionalShieldLineHit(sx, sy, ex, ey) {
+    if (!this._dirShield?.active) return null;
+    const { radius, half } = this._directionalShieldParams();
+    const cx = this.player.x; const cy = this.player.y;
+    const dx = ex - sx; const dy = ey - sy;
+    const a = dx * dx + dy * dy;
+    if (a <= 0.0001) return null;
+    const fx = sx - cx; const fy = sy - cy;
+    const b = 2 * (fx * dx + fy * dy);
+    const c = fx * fx + fy * fy - radius * radius;
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) return null;
+    const sqrtD = Math.sqrt(disc);
+    const t1 = (-b - sqrtD) / (2 * a);
+    const t2 = (-b + sqrtD) / (2 * a);
+    let t = null;
+    if (t1 >= 0 && t1 <= 1) t = t1;
+    else if (t2 >= 0 && t2 <= 1) t = t2;
+    if (t === null) return null;
+    const ix = sx + dx * t; const iy = sy + dy * t;
+    const ang = Math.atan2(iy - cy, ix - cx);
+    const diff = Math.abs(Phaser.Math.Angle.Wrap(ang - this._directionalShieldAngle()));
+    if (diff > half) return null;
+    return { x: ix, y: iy };
   }
 
   endStealthDecoy() {

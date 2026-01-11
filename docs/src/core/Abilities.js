@@ -42,6 +42,15 @@ export const abilityDefs = [
       'The melee that breaks stealth deals 10x damage.',
     ].join('\n'),
   },
+  {
+    id: 'directional_shield',
+    name: 'Directional Shield',
+    desc: [
+      'Project a 90° yellow arc that follows the cursor and blocks ranged attacks.',
+      'Shield HP: 1000. Decays 100/s and breaks when depleted.',
+      'Cooldown: 12s.',
+    ].join('\n'),
+  },
 ];
 
 export function getAbilityById(id) {
