@@ -1604,9 +1604,10 @@ export default class CombatScene extends Phaser.Scene {
         if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
         // Apply damage (Explosive Core reduces primary to 80%; explosive projectiles keep 100%)
         {
-          const baseDmg = b.damage || 10;
+          let baseDmg = b.damage || 10;
+          if (b._vulcan && e.isBoss) baseDmg = 1;
           const primaryDmg = (b._core === 'blast' && !b._rocket) ? Math.ceil(baseDmg * 0.8) : baseDmg;
-          e.hp -= primaryDmg;
+          if (primaryDmg > 0) e.hp -= primaryDmg;
         }
         // Brief per-enemy hit feedback: flash sprite + small directional spark at impact
         try {
@@ -1627,7 +1628,7 @@ export default class CombatScene extends Phaser.Scene {
           } catch (_) {}
         } catch (_) {}
         // Apply ignite buildup from special cores (e.g., Rifle Incendiary)
-        if (b._igniteOnHit && b._igniteOnHit > 0) {
+        if (b._igniteOnHit && b._igniteOnHit > 0 && !(b._vulcan && e.isBoss)) {
           const add = b._igniteOnHit;
           e._igniteValue = Math.min(10, (e._igniteValue || 0) + add);
           if ((e._igniteValue || 0) >= 10) {
@@ -1643,7 +1644,7 @@ export default class CombatScene extends Phaser.Scene {
           }
         }
         // Apply toxin buildup from special cores (e.g., SMG Toxic Rounds)
-        if (b._toxinOnHit && b._toxinOnHit > 0) {
+        if (b._toxinOnHit && b._toxinOnHit > 0 && !(b._vulcan && e.isBoss)) {
           const addT = b._toxinOnHit;
           e._toxinValue = Math.min(10, (e._toxinValue || 0) + addT);
           if ((e._toxinValue || 0) >= 10) {
@@ -1659,7 +1660,7 @@ export default class CombatScene extends Phaser.Scene {
           }
         }
         // Apply stun buildup from stun ammunition (normal enemies)
-        if (b._stunOnHit && b._stunOnHit > 0) {
+        if (b._stunOnHit && b._stunOnHit > 0 && !(b._vulcan && e.isBoss)) {
           const nowS = this.time.now;
           e._stunValue = Math.min(10, (e._stunValue || 0) + b._stunOnHit);
           if ((e._stunValue || 0) >= 10) {
@@ -4293,6 +4294,7 @@ export default class CombatScene extends Phaser.Scene {
               b.setCircle(2).setOffset(-2, -2);
               b.setVelocity(Math.cos(ang) * 900, Math.sin(ang) * 900);
               b.damage = 5;
+              b._vulcan = true;
               b.setTint(0xffee66);
               b.update = () => {
                 const view = this.cameras?.main?.worldView;

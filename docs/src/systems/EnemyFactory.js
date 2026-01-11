@@ -115,7 +115,8 @@ function _applyTextureAndScale(e, key, bodyW, bodyH) {
                       } catch (_) {}
                     }
                     // Damage
-                    const baseDmg = b.damage || 10;
+                    let baseDmg = b.damage || 10;
+                    if (b._vulcan && owner.isBoss) baseDmg = 0;
                     if (owner.isDummy) {
                       const primaryDmg = (b._core === 'blast' && !b._rocket) ? Math.ceil(baseDmg * 0.8) : baseDmg;
                       sc._dummyDamage = (sc._dummyDamage || 0) + primaryDmg;

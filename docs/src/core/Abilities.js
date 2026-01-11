@@ -57,6 +57,7 @@ export const abilityDefs = [
     desc: [
       'Deploy a turret that targets the closest enemy and fires 2000 RPM bullets.',
       'Warmup: 1s. Duration: 9s. Despawns when the room is clear.',
+      'Deals 1 dmg per bullet to bosses.',
       'Cooldown: 20s.',
     ].join('\n'),
   },
