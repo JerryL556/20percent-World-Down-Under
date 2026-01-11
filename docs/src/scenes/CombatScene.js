@@ -4209,7 +4209,7 @@ export default class CombatScene extends Phaser.Scene {
       if (this._vulcanTurrets && this._vulcanTurrets.length) {
         const nowT = this.time.now;
         const dt = (this.game?.loop?.delta || 16.7) / 1000;
-        const maxTurn = Phaser.Math.DegToRad(180) * dt;
+        const maxTurn = Phaser.Math.DegToRad(300) * dt;
         const rpmMs = 60000 / 2000; // 2000 RPM
         const enemies = this.enemies?.getChildren?.() || [];
         const hasEnemies = enemies.some((e) => e?.active && !e.isDummy);
@@ -4218,11 +4218,13 @@ export default class CombatScene extends Phaser.Scene {
           if (nowT >= (t.until || 0)) {
             try { t.base?.destroy(); } catch (_) {}
             try { t.head?.destroy(); } catch (_) {}
+            try { t._aimG?.destroy(); } catch (_) {}
             return false;
           }
           if (!this.gs?.shootingRange && !hasEnemies) {
             try { t.base?.destroy(); } catch (_) {}
             try { t.head?.destroy(); } catch (_) {}
+            try { t._aimG?.destroy(); } catch (_) {}
             return false;
           }
           // Find closest target to turret (dummy allowed in range)
@@ -4242,14 +4244,54 @@ export default class CombatScene extends Phaser.Scene {
             const step = Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
             t.angle = (t.angle || 0) + step;
           }
-          if (t.base) { t.base.setPosition(t.x, t.y); }
-          if (t.head) { t.head.setPosition(t.x, t.y); t.head.rotation = (t.angle || 0) + Math.PI; }
+          if (t.base) {
+            t.base.setPosition(t.x, t.y);
+            const facingRight = (best && best.x >= t.x);
+            const sx = facingRight ? -Math.abs(t.base.scaleX || 1) : Math.abs(t.base.scaleX || 1);
+            t.base.scaleX = sx;
+          }
+          if (t.head) {
+            const baseH = t.base ? (t.base.displayHeight || t.base.height || 12) : 12;
+            t.head.setPosition(t.x, t.y - baseH * 0.14);
+            const facingRight = (best && best.x >= t.x);
+            const sy = facingRight ? -Math.abs(t.head.scaleY || 1) : Math.abs(t.head.scaleY || 1);
+            t.head.scaleY = sy;
+            t.head.rotation = (t.angle || 0) + Math.PI;
+            const off = (t.head.displayWidth || t.head.width || 12) * 0.45;
+            t._muzzleX = t.head.x + Math.cos(t.angle) * off;
+            t._muzzleY = t.head.y + Math.sin(t.angle) * off;
+          }
+          // Red aim line (uncapped, points directly to target)
+          if (!t._aimG) {
+            try {
+              t._aimG = this.add.graphics();
+              t._aimG.setDepth(8610);
+            } catch (_) {}
+          }
+          if (t._aimG) {
+            try {
+              t._aimG.clear();
+              if (best) {
+                const sx = (typeof t._muzzleX === 'number') ? t._muzzleX : t.x;
+                const sy = (typeof t._muzzleY === 'number') ? t._muzzleY : t.y;
+                t._aimG.lineStyle(1, 0xff2222, 1);
+                t._aimG.beginPath();
+                t._aimG.moveTo(sx, sy);
+                t._aimG.lineTo(best.x, best.y);
+                t._aimG.strokePath();
+              }
+            } catch (_) {}
+          }
           if (nowT >= (t.warmUntil || 0) && best && nowT >= (t.lastShotAt || 0) + rpmMs) {
-            const b = this.bullets.get(t.x, t.y, 'bullet');
+            const sx = (typeof t._muzzleX === 'number') ? t._muzzleX : t.x;
+            const sy = (typeof t._muzzleY === 'number') ? t._muzzleY : t.y;
+            const spread = Phaser.Math.DegToRad(3);
+            const ang = t.angle + Phaser.Math.FloatBetween(-spread / 2, spread / 2);
+            const b = this.bullets.get(sx, sy, 'bullet');
             if (b) {
               b.setActive(true).setVisible(true);
               b.setCircle(2).setOffset(-2, -2);
-              b.setVelocity(Math.cos(t.angle) * 400, Math.sin(t.angle) * 400);
+              b.setVelocity(Math.cos(ang) * 900, Math.sin(ang) * 900);
               b.damage = 5;
               b.setTint(0xffee66);
               b.update = () => {
