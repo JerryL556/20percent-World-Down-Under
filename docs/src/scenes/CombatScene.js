@@ -320,6 +320,20 @@ export default class CombatScene extends Phaser.Scene {
         try { bInv.setText(label()); } catch (_) {}
       });
       nodes.push(bInv);
+      if (typeof this._rangeNoAbilityCd !== 'boolean') this._rangeNoAbilityCd = false;
+      const labelCd = () => (this._rangeNoAbilityCd ? 'Ability CD: Off' : 'Ability CD: On');
+      const bCd = addBtnAt(col3X, r0 + rLine * (miscRow++ + r), labelCd(), () => {
+        this._rangeNoAbilityCd = !this._rangeNoAbilityCd;
+        try { bCd.setText(labelCd()); } catch (_) {}
+      });
+      nodes.push(bCd);
+      if (typeof this._rangeInfiniteAmmo !== 'boolean') this._rangeInfiniteAmmo = false;
+      const labelAmmo = () => (this._rangeInfiniteAmmo ? 'Mag Ammo: Infinite' : 'Mag Ammo: Normal');
+      const bAmmo = addBtnAt(col3X, r0 + rLine * (miscRow++ + r), labelAmmo(), () => {
+        this._rangeInfiniteAmmo = !this._rangeInfiniteAmmo;
+        try { bAmmo.setText(labelAmmo()); } catch (_) {}
+      });
+      nodes.push(bAmmo);
     }
     const bClear = addBtnAt(col3X, r0 + rLine * (miscRow++ + r), 'Clear Enemies', () => {
       try { const list = (this.enemies?.getChildren?.() || []).slice(); list.forEach((e) => { try { if (e && e.active && !e.isDummy) e.destroy(); } catch (_) {} }); } catch (_) {}
@@ -3773,6 +3787,20 @@ export default class CombatScene extends Phaser.Scene {
     const isRail = !!weapon.isRailgun;
     const isLaser = !!weapon.isLaser;
     const isFlame = !!weapon.isFlamethrower;
+    if (this.gs?.shootingRange && this._rangeInfiniteAmmo) {
+      try {
+        const wid = this.gs.activeWeapon;
+        const cap = this.getActiveMagCapacity();
+        this.ensureAmmoFor(wid, cap, true);
+        this.ammoByWeapon[wid] = cap;
+        this.registry.set('ammoInMag', cap);
+        this.registry.set('magSize', cap);
+        this.reload.active = false;
+        this.reload.duration = 0;
+        this.registry.set('reloadActive', false);
+        this.registry.set('reloadProgress', 1);
+      } catch (_) {}
+    }
     // Finish reload if timer elapsed; update reload progress for UI
     if (this.reload?.active) {
       const now = this.time.now;
@@ -4005,32 +4033,33 @@ export default class CombatScene extends Phaser.Scene {
     // Ability activation (F)
     if (this.inputMgr.pressedAbility) {
       const nowT = this.time.now;
+      const noCd = !!(this.gs?.shootingRange && this._rangeNoAbilityCd);
       if (nowT >= (this.ability.onCooldownUntil || 0)) {
         const abilityId = this.gs?.abilityId || 'ads';
         if (abilityId === 'ads') {
           this.deployADS();
-          this.ability.cooldownMs = 10000;
-          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+          this.ability.cooldownMs = noCd ? 1 : 10000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'bits') {
           this.deployBITs();
-          this.ability.cooldownMs = 14000;
-          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+          this.ability.cooldownMs = noCd ? 1 : 14000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'repulse') {
           this.deployRepulsionPulse();
-          this.ability.cooldownMs = 6000; // 6s for Repulsion Pulse
-          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+          this.ability.cooldownMs = noCd ? 1 : 6000; // 6s for Repulsion Pulse
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'caustic_cluster') {
           this.deployCausticCluster();
-          this.ability.cooldownMs = 10000;
-          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+          this.ability.cooldownMs = noCd ? 1 : 10000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'landmine_dispenser') {
           this.deployLandmineDispenser();
-          this.ability.cooldownMs = 15000; // 15s
-          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+          this.ability.cooldownMs = noCd ? 1 : 15000; // 15s
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'stealth_decoy') {
           this.startStealthDecoy();
-          this.ability.cooldownMs = 10000;
-          this.ability.onCooldownUntil = nowT + this.ability.cooldownMs;
+          this.ability.cooldownMs = noCd ? 1 : 10000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         }
       }
     }
@@ -4085,14 +4114,20 @@ export default class CombatScene extends Phaser.Scene {
 
     // Ability cooldown progress for UI
     try {
-      const nowT2 = this.time.now;
-      const until = this.ability?.onCooldownUntil || 0;
-      const active = nowT2 < until;
-      const denom = this.ability?.cooldownMs || 10000;
-      const remaining = Math.max(0, until - nowT2);
-      const prog = active ? (1 - Math.min(1, remaining / denom)) : 1;
-      this.registry.set('abilityCooldownActive', active);
-    this.registry.set('abilityCooldownProgress', prog);
+      const noCd = !!(this.gs?.shootingRange && this._rangeNoAbilityCd);
+      if (noCd) {
+        this.registry.set('abilityCooldownActive', false);
+        this.registry.set('abilityCooldownProgress', 1);
+      } else {
+        const nowT2 = this.time.now;
+        const until = this.ability?.onCooldownUntil || 0;
+        const active = nowT2 < until;
+        const denom = this.ability?.cooldownMs || 10000;
+        const remaining = Math.max(0, until - nowT2);
+        const prog = active ? (1 - Math.min(1, remaining / denom)) : 1;
+        this.registry.set('abilityCooldownActive', active);
+        this.registry.set('abilityCooldownProgress', prog);
+      }
     } catch (_) {}
 
     // Ignite burn ticking (global): apply burn DPS to ignited enemies
