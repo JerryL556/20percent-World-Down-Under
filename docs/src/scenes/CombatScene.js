@@ -30,6 +30,10 @@ export default class CombatScene extends Phaser.Scene {
   preload() {
     // Ensure weapon images are loaded even if entering this scene directly
     try { preloadWeaponAssets(this); } catch (_) {}
+    try {
+      if (!this.textures.exists('turret_base')) this.load.image('turret_base', 'assets/Turret Base.png');
+      if (!this.textures.exists('turret_vulcan')) this.load.image('turret_vulcan', 'assets/Vulcan Turret.png');
+    } catch (_) {}
   }
 
   // Shared helper: brief red flash on an enemy's visual sprite when it takes damage
@@ -2000,6 +2004,7 @@ export default class CombatScene extends Phaser.Scene {
     this.ability = { onCooldownUntil: 0 };
     this._stealth = { active: false, until: 0, decoy: null };
     this._dirShield = { active: false, hp: 0, maxHp: 1000, decayPerSec: 100, g: null, breakG: null };
+    this._vulcanTurrets = [];
     
   }
 
@@ -4075,7 +4080,11 @@ export default class CombatScene extends Phaser.Scene {
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'directional_shield') {
           this.startDirectionalShield();
-          this.ability.cooldownMs = noCd ? 1 : 12000;
+          this.ability.cooldownMs = noCd ? 1 : 15000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
+        } else if (abilityId === 'vulcan_turret') {
+          this.deployVulcanTurret();
+          this.ability.cooldownMs = noCd ? 1 : 20000;
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         }
       }
@@ -4192,6 +4201,66 @@ export default class CombatScene extends Phaser.Scene {
         }
       } else {
         try { this._dirShield?.g?.clear?.(); } catch (_) {}
+      }
+    } catch (_) {}
+
+    // Vulcan turret update: target closest enemy and fire
+    try {
+      if (this._vulcanTurrets && this._vulcanTurrets.length) {
+        const nowT = this.time.now;
+        const dt = (this.game?.loop?.delta || 16.7) / 1000;
+        const maxTurn = Phaser.Math.DegToRad(180) * dt;
+        const rpmMs = 60000 / 2000; // 2000 RPM
+        const enemies = this.enemies?.getChildren?.() || [];
+        const hasEnemies = enemies.some((e) => e?.active && !e.isDummy);
+        this._vulcanTurrets = this._vulcanTurrets.filter((t) => {
+          if (!t) return false;
+          if (nowT >= (t.until || 0)) {
+            try { t.base?.destroy(); } catch (_) {}
+            try { t.head?.destroy(); } catch (_) {}
+            return false;
+          }
+          if (!this.gs?.shootingRange && !hasEnemies) {
+            try { t.base?.destroy(); } catch (_) {}
+            try { t.head?.destroy(); } catch (_) {}
+            return false;
+          }
+          // Find closest target to turret (dummy allowed in range)
+          let best = null;
+          let bestD2 = Infinity;
+          for (let i = 0; i < enemies.length; i += 1) {
+            const e = enemies[i];
+            if (!e?.active) continue;
+            if (!this.gs?.shootingRange && e.isDummy) continue;
+            const dx = e.x - t.x; const dy = e.y - t.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < bestD2) { bestD2 = d2; best = e; }
+          }
+          if (best) {
+            const desired = Math.atan2(best.y - t.y, best.x - t.x);
+            const diff = Phaser.Math.Angle.Wrap(desired - (t.angle || 0));
+            const step = Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+            t.angle = (t.angle || 0) + step;
+          }
+          if (t.base) { t.base.setPosition(t.x, t.y); }
+          if (t.head) { t.head.setPosition(t.x, t.y); t.head.rotation = (t.angle || 0) + Math.PI; }
+          if (nowT >= (t.warmUntil || 0) && best && nowT >= (t.lastShotAt || 0) + rpmMs) {
+            const b = this.bullets.get(t.x, t.y, 'bullet');
+            if (b) {
+              b.setActive(true).setVisible(true);
+              b.setCircle(2).setOffset(-2, -2);
+              b.setVelocity(Math.cos(t.angle) * 400, Math.sin(t.angle) * 400);
+              b.damage = 5;
+              b.setTint(0xffee66);
+              b.update = () => {
+                const view = this.cameras?.main?.worldView;
+                if (view && !view.contains(b.x, b.y)) { try { b.destroy(); } catch (_) {} }
+              };
+            }
+            t.lastShotAt = nowT;
+          }
+          return true;
+        });
       }
     } catch (_) {}
 
@@ -8405,14 +8474,26 @@ export default class CombatScene extends Phaser.Scene {
     if (!this._dirShield) return;
     if (breakNow) {
       try {
-        const g = this.add.graphics();
-        g.setDepth(8800);
         const cx = this.player.x; const cy = this.player.y;
-        g.lineStyle(4, 0xffee66, 0.9).strokeCircle(cx, cy, 38);
-        this.tweens.add({ targets: g, alpha: 0, scale: 1.6, duration: 220, ease: 'Quad.easeOut', onComplete: () => { try { g.destroy(); } catch (_) {} } });
-        for (let i = 0; i < 16; i += 1) {
-          const a = (i / 16) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.2, 0.2);
-          pixelSparks(this, cx, cy, { angleRad: a, count: 1, spreadDeg: 12, speedMin: 120, speedMax: 220, lifeMs: 220, color: 0xffee66, size: 2, alpha: 0.9 });
+        const ang = this._directionalShieldAngle();
+        const { radius, half } = this._directionalShieldParams();
+        const count = 18;
+        for (let i = 0; i < count; i += 1) {
+          const t = (count === 1) ? 0 : (i / (count - 1) - 0.5);
+          const a = ang + t * half * 2;
+          const px = cx + Math.cos(a) * radius;
+          const py = cy + Math.sin(a) * radius;
+          pixelSparks(this, px, py, {
+            angleRad: a,
+            count: 2,
+            spreadDeg: 22,
+            speedMin: 120,
+            speedMax: 240,
+            lifeMs: 260,
+            color: 0xffee66,
+            size: 2,
+            alpha: 0.95,
+          });
         }
       } catch (_) {}
     }
@@ -8486,6 +8567,46 @@ export default class CombatScene extends Phaser.Scene {
     const diff = Math.abs(Phaser.Math.Angle.Wrap(ang - this._directionalShieldAngle()));
     if (diff > half) return null;
     return { x: ix, y: iy };
+  }
+
+  deployVulcanTurret() {
+    const now = this.time.now;
+    const x = this.player.x; const y = this.player.y;
+    const turret = {
+      x, y,
+      base: null,
+      head: null,
+      spawnAt: now,
+      warmUntil: now + 1000,
+      until: now + 9000,
+      angle: this.playerFacing || 0,
+      lastShotAt: 0,
+    };
+    try {
+      const base = this.add.image(x, y, 'turret_base');
+      base.setOrigin(0.5, 0.5);
+      base.setDepth(8000);
+      try {
+        const tex = this.textures.get('turret_base');
+        const src = tex?.getSourceImage?.();
+        const h = (src && (src.naturalHeight || src.height)) || tex?.frames?.['__BASE']?.height || base.height || 1;
+        if (h > 0) base.setScale((12 / h) * 2.4);
+      } catch (_) {}
+      turret.base = base;
+    } catch (_) {}
+    try {
+      const head = this.add.image(x, y, 'turret_vulcan');
+      head.setOrigin(0.6, 0.5);
+      head.setDepth(8005);
+      try {
+        const texH = this.textures.get('turret_vulcan');
+        const srcH = texH?.getSourceImage?.();
+        const h2 = (srcH && (srcH.naturalHeight || srcH.height)) || texH?.frames?.['__BASE']?.height || head.height || 1;
+        if (h2 > 0) head.setScale((12 / h2) * 2.6);
+      } catch (_) {}
+      turret.head = head;
+    } catch (_) {}
+    this._vulcanTurrets.push(turret);
   }
 
   endStealthDecoy() {

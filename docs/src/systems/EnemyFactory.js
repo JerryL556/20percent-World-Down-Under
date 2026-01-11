@@ -18,6 +18,7 @@ const ENEMY_TEXTURE_PATHS = {
   enemy_laser_drone: 'assets/LaserDrone.png',
   turret_base: 'assets/Turret Base.png',
   turret_head: 'assets/Turret Head.png',
+  turret_vulcan: 'assets/Vulcan Turret.png',
 };
 
 function _ensureEnemyTexture(scene, key, onLoaded) {

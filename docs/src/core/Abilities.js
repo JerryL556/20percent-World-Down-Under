@@ -48,7 +48,16 @@ export const abilityDefs = [
     desc: [
       'Project a 90° yellow arc that follows the cursor and blocks ranged attacks.',
       'Shield HP: 1000. Decays 100/s and breaks when depleted.',
-      'Cooldown: 12s.',
+      'Cooldown: 15s.',
+    ].join('\n'),
+  },
+  {
+    id: 'vulcan_turret',
+    name: 'Vulcan Turret',
+    desc: [
+      'Deploy a turret that targets the closest enemy and fires 2000 RPM bullets.',
+      'Warmup: 1s. Duration: 9s. Despawns when the room is clear.',
+      'Cooldown: 20s.',
     ].join('\n'),
   },
 ];
