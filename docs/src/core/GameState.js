@@ -63,6 +63,10 @@ export class GameState {
     this.deepDive = { level: 1, stage: 1, baseNormal: 5, baseElite: 1 };
     // Best Deep Dive record (persists across runs until improved)
     this.deepDiveBest = { level: 0, stage: 0 };
+    // Swarm state
+    this.swarm = { level: 1 };
+    // Best Swarm record (persists across runs until improved)
+    this.swarmBest = { level: 0 };
     // Boss Rush sequence queue (array of boss type strings)
     this.bossRushQueue = [];
     // Boss Rush completion flag (per-run)
@@ -110,6 +114,7 @@ export class GameState {
     this.campaignMaxUnlocked = 1;
     this.campaignCompleted = false;
     this.deepDive = { level: 1, stage: 1, baseNormal: 5, baseElite: 1 };
+    this.swarm = { level: 1 };
     this.bossRushQueue = [];
     this.lastBossType = null;
     this.abilityId = 'ads';
@@ -144,6 +149,14 @@ export class GameState {
         if (ratio > 4) dd.baseElite += 1;
       }
       this.deepDive = dd;
+      this.nextScene = 'Combat';
+      return;
+    }
+    if (this.gameMode === 'Swarm') {
+      const sw = this.swarm || { level: 1 };
+      sw.level = Math.max(1, (sw.level || 1) + 1);
+      this.swarm = sw;
+      this.currentDepth += 1;
       this.nextScene = 'Combat';
       return;
     }
@@ -215,6 +228,12 @@ export class GameState {
       this.roomsClearedInCycle = 0;
       this.currentDepth = 1;
       this.nextScene = 'Combat';
+    } else if (mode === 'Swarm') {
+      this.gameMode = 'Swarm';
+      this.swarm = { level: 1 };
+      this.roomsClearedInCycle = 0;
+      this.currentDepth = 1;
+      this.nextScene = 'Combat';
     } else {
       this.gameMode = 'Normal';
       this.bossRushQueue = [];
@@ -261,6 +280,8 @@ export class GameState {
       campaignCompleted: this.campaignCompleted,
       deepDive: this.deepDive,
       deepDiveBest: this.deepDiveBest,
+      swarm: this.swarm,
+      swarmBest: this.swarmBest,
       bossRushQueue: this.bossRushQueue,
       bossRushCompleted: this.bossRushCompleted,
       lastBossType: this.lastBossType,
@@ -278,6 +299,7 @@ export class GameState {
     if (typeof gs.droneCores !== 'number') gs.droneCores = 1;
     gs.rng = new RNG(gs.runSeed);
     if (!gs.deepDiveBest) gs.deepDiveBest = { level: 0, stage: 0 };
+    if (!gs.swarmBest) gs.swarmBest = { level: 0 };
     if (typeof gs.bossRushCompleted !== 'boolean') gs.bossRushCompleted = false;
     if (!gs.ownedWeapons) gs.ownedWeapons = ['pistol'];
     if (!gs.equippedWeapons || !Array.isArray(gs.equippedWeapons)) gs.equippedWeapons = [gs.ownedWeapons[0] || 'pistol', null];
@@ -296,11 +318,13 @@ export class GameState {
     if (typeof gs.campaignCompleted !== 'boolean') gs.campaignCompleted = false;
     if (!Array.isArray(gs.bossRushQueue)) gs.bossRushQueue = [];
     if (!gs.deepDive || typeof gs.deepDive !== 'object') gs.deepDive = { level: 1, stage: 1, baseNormal: 5, baseElite: 1 };
+    if (!gs.swarm || typeof gs.swarm !== 'object') gs.swarm = { level: 1 };
     // Clamp Deep Dive fields
     if (typeof gs.deepDive.level !== 'number' || gs.deepDive.level < 1) gs.deepDive.level = 1;
     if (typeof gs.deepDive.stage !== 'number' || gs.deepDive.stage < 1 || gs.deepDive.stage > 4) gs.deepDive.stage = 1;
     if (typeof gs.deepDive.baseNormal !== 'number' || gs.deepDive.baseNormal < 1) gs.deepDive.baseNormal = 5;
     if (typeof gs.deepDive.baseElite !== 'number' || gs.deepDive.baseElite < 1) gs.deepDive.baseElite = 1;
+    if (typeof gs.swarm.level !== 'number' || gs.swarm.level < 1) gs.swarm.level = 1;
     if (!('lastBossType' in gs)) gs.lastBossType = null;
     if (!gs.abilityId) gs.abilityId = 'ads';
     // Ensure ability ownership defaults and consistency

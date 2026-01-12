@@ -2,7 +2,7 @@ import { SceneKeys } from '../core/SceneKeys.js';
 import { InputManager } from '../core/Input.js';
 import { SaveManager } from '../core/SaveManager.js';
 import { generateRoom, generateBarricades } from '../systems/ProceduralGen.js';
-import { createEnemy, createShooterEnemy, createRunnerEnemy, createSniperEnemy, createMachineGunnerEnemy, createRocketeerEnemy, createBoss, createGrenadierEnemy, createPrismEnemy, createSnitchEnemy, createRookEnemy, createTurretEnemy, createHealDroneEnemy, createLaserDroneEnemy } from '../systems/EnemyFactory.js';
+import { createEnemy, createShooterEnemy, createRunnerEnemy, createSniperEnemy, createMachineGunnerEnemy, createRocketeerEnemy, createBoss, createGrenadierEnemy, createPrismEnemy, createSnitchEnemy, createRookEnemy, createTurretEnemy, createHealDroneEnemy, createLaserDroneEnemy, createSwarmHealDroneEnemy, createSwarmLaserDroneEnemy, createSwarmShooterDroneEnemy } from '../systems/EnemyFactory.js';
 import { weaponDefs } from '../core/Weapons.js';
 import { impactBurst, bitSpawnRing, pulseSpark, muzzleFlash, muzzleFlashSplit, ensureCircleParticle, ensurePixelParticle, pixelSparks, spawnDeathVfxForEnemy, getScrapTintForEnemy, teleportSpawnVfx, bossSignalBeam, spawnBombardmentMarker } from '../systems/Effects.js';
 import { getEffectiveWeapon, getPlayerEffects } from '../core/Loadout.js';
@@ -522,6 +522,16 @@ export default class CombatScene extends Phaser.Scene {
             }
           } catch (_) {}
           gs.deepDive = { level: 1, stage: 1, baseNormal: 5, baseElite: 1 };
+        } else if (afterHp <= 0 && gs.gameMode === 'Swarm') {
+          try {
+            const cur = gs.swarm || { level: 1 };
+            const best = gs.swarmBest || { level: 0 };
+            if ((cur.level || 0) > (best.level || 0)) {
+              gs.swarmBest = { level: cur.level };
+              SaveManager.saveToLocal(gs);
+            }
+          } catch (_) {}
+          gs.swarm = { level: 1 };
         }
       } catch (_) {}
     } catch (_) {}
@@ -751,6 +761,26 @@ export default class CombatScene extends Phaser.Scene {
       this.time.delayedCall(50, ensureDeepDiveLabel);
       this.time.delayedCall(150, ensureDeepDiveLabel);
     } catch (_) {}
+    // Swarm tracker text in UI scene
+    try {
+      const ensureSwarmLabel = () => {
+        const ui = this.scene.get(SceneKeys.UI);
+        if (!ui) return;
+        if (!ui.swarmText || !ui.swarmText.active) {
+          ui.swarmText = ui.add.text(12, 28, '', { fontFamily: 'monospace', fontSize: 12, color: '#66ffcc' }).setOrigin(0, 0).setAlpha(0.95);
+        }
+        if (this.gs?.gameMode === 'Swarm' && this.gs.swarm) {
+          const L = Math.max(1, this.gs.swarm.level || 1);
+          ui.swarmText.setText(`Swarm ${L}`);
+          ui.swarmText.setVisible(true);
+        } else {
+          ui.swarmText.setVisible(false);
+        }
+      };
+      ensureSwarmLabel();
+      this.time.delayedCall(50, ensureSwarmLabel);
+      this.time.delayedCall(150, ensureSwarmLabel);
+    } catch (_) {}
     // Campaign (Normal) label in Combat: show "Campaign S-L" where L is 1..3 for rooms
     try {
       const ensureCampaignLabel = () => {
@@ -942,6 +972,19 @@ export default class CombatScene extends Phaser.Scene {
             }
           }
         } catch (_) {}
+        // Swarm tracker update in UI scene
+        try {
+          const ui = this.scene.get(SceneKeys.UI);
+          if (ui && ui.swarmText) {
+            if (this.gs?.gameMode === 'Swarm' && this.gs.swarm) {
+              const L = Math.max(1, this.gs.swarm.level || 1);
+              ui.swarmText.setText(`Swarm ${L}`);
+              ui.swarmText.setVisible(true);
+            } else {
+              ui.swarmText.setVisible(false);
+            }
+          }
+        } catch (_) {}
         // Landmine Dispenser: manage mine travel + arming + detection globally so behavior is consistent
         try {
           if (Array.isArray(this._mines) && this._mines.length) {
@@ -1043,6 +1086,7 @@ export default class CombatScene extends Phaser.Scene {
     } catch (_) {}
     // Reset exit state at scene start
     this.exitActive = false;
+    this._swarmState = null;
     try { this.exitG?.clear?.(); } catch (_) {}
     try { this.prompt?.setText?.(''); } catch (_) {}
     // If this is a boss room, spawn the boss ASAP so exit logic doesn't trigger prematurely
@@ -1110,6 +1154,19 @@ export default class CombatScene extends Phaser.Scene {
           s.setData('destructible', true);
           s.setData('hp', 20);
           this.barricadesSoft.add(s);
+        });
+      } else if (this.gs?.gameMode === 'Swarm') {
+        const barricades = generateBarricades(this.gs.rng, this.arenaRect, 'hard_sparse') || [];
+        barricades.forEach((b) => {
+          if (b.kind === 'hard') {
+            const s = this.physics.add.staticImage(b.x, b.y, 'barricade_hard');
+            s.setData('destructible', false);
+            this.barricadesHard.add(s);
+          } else {
+            const s = this.physics.add.staticImage(b.x, b.y, 'barricade_hard');
+            s.setData('destructible', false);
+            this.barricadesHard.add(s);
+          }
         });
       } else {
         // Normal rooms: slightly reduce intensity of soft-only layouts
@@ -1221,6 +1278,68 @@ export default class CombatScene extends Phaser.Scene {
             for (let i = 0; i < stageNormal; i += 1) spawnOneNormal();
             for (let i = 0; i < stageElite; i += 1) spawnOneElite();
           }
+        } else if (this.gs?.gameMode === 'Swarm') {
+          const sw = this.gs.swarm || { level: 1 };
+          const level = Math.max(1, sw.level || 1);
+          const laserCount = 8 + (level - 1) * 2;
+          const healCount = 2 + Math.floor((level - 1) / 2);
+          const swarmHpMult = 1 + (level - 1) * 0.1;
+          const spawnSwarmEnemy = (kind) => {
+            const sp = pickEdgeSpawn();
+            const spawnFn = () => {
+              if (kind === 'heal') {
+                const hp = Math.floor(30 * (mods.enemyHp || 1) * swarmHpMult);
+                const d = createSwarmHealDroneEnemy(this, sp.x, sp.y, hp);
+                d._swarmLevel = level;
+                d._swarmHealMult = swarmHpMult;
+                this.enemies.add(d);
+              } else if (kind === 'shooter') {
+                const hp = Math.floor(20 * (mods.enemyHp || 1) * swarmHpMult);
+                const d = createSwarmShooterDroneEnemy(this, sp.x, sp.y, hp);
+                d._swarmLevel = level;
+                d._swarmDmgMult = (mods.enemyDamage || 1);
+                this.enemies.add(d);
+              } else {
+                const hp = Math.floor(20 * (mods.enemyHp || 1) * swarmHpMult);
+                const d = createSwarmLaserDroneEnemy(this, sp.x, sp.y, hp);
+                d._swarmLevel = level;
+                d._swarmDpsMult = swarmHpMult * (mods.enemyDamage || 1);
+                this.enemies.add(d);
+              }
+            };
+            try {
+              teleportSpawnVfx(this, sp.x, sp.y, { onSpawn: spawnFn });
+            } catch (_) {
+              spawnFn();
+            }
+          };
+          const spawnSwarmWave = () => {
+            for (let i = 0; i < laserCount; i += 1) {
+              const roll = this.gs?.rng?.next?.() ?? Math.random();
+              spawnSwarmEnemy(roll < 0.5 ? 'shooter' : 'laser');
+            }
+            for (let i = 0; i < healCount; i += 1) spawnSwarmEnemy('heal');
+          };
+          if (!this._isBossRoom) {
+            this._swarmState = {
+              level,
+              totalWaves: 3,
+              wavesSpawned: 0,
+              waveTimes: [0, 10000, 20000],
+              startedAt: this.time.now,
+            };
+            const spawnWaveWithTimer = (delayMs) => {
+              this.time.delayedCall(delayMs, () => {
+                if (!this.scene?.isActive?.(SceneKeys.Combat)) return;
+                spawnSwarmWave();
+                if (this._swarmState) this._swarmState.wavesSpawned += 1;
+              });
+            };
+            this._swarmState.wavesSpawned = 0;
+            spawnWaveWithTimer(0);
+            spawnWaveWithTimer(10000);
+            spawnWaveWithTimer(20000);
+          }
         } else {
           // Campaign (Normal) game: composition based on depth for normals, elites by stage
           if (!this._isBossRoom) {
@@ -1329,7 +1448,7 @@ export default class CombatScene extends Phaser.Scene {
       (e, s) => {
         // Heal/Laser Drones ignore hard barricade collisions
         try {
-          if (e?.isHealDrone || e?.isLaserDrone) return false;
+          if (e?.isHealDrone || e?.isLaserDrone || e?.isSwarmHealDrone || e?.isSwarmLaserDrone || e?.isSwarmShooterDrone) return false;
         } catch (_) {}
         // Let Dandelion ignore hard barricade collision response while dashing/assaulting
         try {
@@ -1351,7 +1470,7 @@ export default class CombatScene extends Phaser.Scene {
       (e, s) => {
         // Heal/Laser Drones ignore soft barricade collisions
         try {
-          if (e?.isHealDrone || e?.isLaserDrone) return false;
+          if (e?.isHealDrone || e?.isLaserDrone || e?.isSwarmHealDrone || e?.isSwarmLaserDrone || e?.isSwarmShooterDrone) return false;
         } catch (_) {}
         // Let Dandelion ignore barricade collision response while dashing/assaulting;
         // soft barricades it touches are explicitly destroyed in _dandelionBreakSoftBarricades.
@@ -1375,7 +1494,7 @@ export default class CombatScene extends Phaser.Scene {
       (e, s) => {
         // Heal/Laser Drones ignore soft barricade break-on-push logic
         try {
-          if (e?.isHealDrone || e?.isLaserDrone) return false;
+          if (e?.isHealDrone || e?.isLaserDrone || e?.isSwarmHealDrone || e?.isSwarmLaserDrone || e?.isSwarmShooterDrone) return false;
         } catch (_) {}
         // While Dandelion is dashing/assault-dashing, ignore soft barricade collision resolution here too
         try {
@@ -4209,8 +4328,6 @@ export default class CombatScene extends Phaser.Scene {
     try {
       if (this._vulcanTurrets && this._vulcanTurrets.length) {
         const nowT = this.time.now;
-        const dt = (this.game?.loop?.delta || 16.7) / 1000;
-        const maxTurn = Phaser.Math.DegToRad(300) * dt;
         const rpmMs = 60000 / 2000; // 2000 RPM
         const enemies = this.enemies?.getChildren?.() || [];
         const hasEnemies = enemies.some((e) => e?.active && !e.isDummy);
@@ -4239,17 +4356,22 @@ export default class CombatScene extends Phaser.Scene {
             const d2 = dx * dx + dy * dy;
             if (d2 < bestD2) { bestD2 = d2; best = e; }
           }
-          if (best) {
-            const desired = Math.atan2(best.y - t.y, best.x - t.x);
-            const diff = Phaser.Math.Angle.Wrap(desired - (t.angle || 0));
-            const step = Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
-            t.angle = (t.angle || 0) + step;
-          }
           if (t.base) {
             t.base.setPosition(t.x, t.y);
             const facingRight = (best && best.x >= t.x);
             const sx = facingRight ? -Math.abs(t.base.scaleX || 1) : Math.abs(t.base.scaleX || 1);
             t.base.scaleX = sx;
+          }
+          if (best) {
+            const baseH = t.base ? (t.base.displayHeight || t.base.height || 12) : 12;
+            const headY = t.y - baseH * 0.14;
+            const desired = Math.atan2(best.y - headY, best.x - t.x);
+            const diff = Phaser.Math.Angle.Wrap(desired - (t.angle || 0));
+            const dtTurn = Math.max(0, (nowT - (t._lastTurnAt || nowT)) / 1000);
+            const maxTurn = Phaser.Math.DegToRad(300) * dtTurn;
+            const step = Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+            t.angle = (t.angle || 0) + step;
+            t._lastTurnAt = nowT;
           }
           if (t.head) {
             const baseH = t.base ? (t.base.displayHeight || t.base.height || 12) : 12;
@@ -4287,13 +4409,13 @@ export default class CombatScene extends Phaser.Scene {
             const sx = (typeof t._muzzleX === 'number') ? t._muzzleX : t.x;
             const sy = (typeof t._muzzleY === 'number') ? t._muzzleY : t.y;
             const spread = Phaser.Math.DegToRad(3);
-            const ang = t.angle + Phaser.Math.FloatBetween(-spread / 2, spread / 2);
+            const ang = (t.angle || 0) + Phaser.Math.FloatBetween(-spread / 2, spread / 2);
             const b = this.bullets.get(sx, sy, 'bullet');
             if (b) {
               b.setActive(true).setVisible(true);
               b.setCircle(2).setOffset(-2, -2);
               b.setVelocity(Math.cos(ang) * 900, Math.sin(ang) * 900);
-              b.damage = 5;
+              b.damage = 8;
               b._vulcan = true;
               b.setTint(0xffee66);
               b.update = () => {
@@ -5450,6 +5572,105 @@ export default class CombatScene extends Phaser.Scene {
           } catch (_) {}
           return;
         }
+        // Swarm Heal Drones: heal closest damaged Swarm drone (heal or laser)
+          if (e.isSwarmHealDrone) {
+            try {
+              const dt = (this.game?.loop?.delta || 16.7) / 1000;
+              const nowHd = this.time.now;
+
+              // Initialize idle orbit state once
+              if (e._hdIdleAngle === undefined) e._hdIdleAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+              if (e._hdIdleRadius === undefined) e._hdIdleRadius = Phaser.Math.Between(70, 100);
+              if (e._hdIdleSpeed === undefined) e._hdIdleSpeed = Phaser.Math.FloatBetween(0.9, 1.4);
+              if (typeof e._hdHoldUntil !== 'number') e._hdHoldUntil = 0;
+
+              // Find up to 3 closest damaged Swarm drones (excluding self)
+              const targets = [];
+              const arr = this.enemies?.getChildren?.() || [];
+              for (let i = 0; i < arr.length; i += 1) {
+                const d = arr[i];
+                if (!d?.active || d === e) continue;
+                if (!(d.isSwarmHealDrone || d.isSwarmLaserDrone || d.isSwarmShooterDrone)) continue;
+                const maxHp = Math.max(1, d.maxHp || 1);
+                const curHp = Math.max(0, d.hp || 0);
+                if (curHp >= maxHp) continue;
+                const dx = d.x - e.x; const dy = d.y - e.y;
+                const d2 = dx * dx + dy * dy;
+                targets.push({ d, d2 });
+              }
+              targets.sort((a, b) => a.d2 - b.d2);
+              const healTargets = targets.slice(0, 3);
+              const primaryTarget = healTargets.length ? healTargets[0].d : null;
+
+              // Movement: hold while healing, otherwise move to target or orbit player
+              if (nowHd < (e._hdHoldUntil || 0)) {
+                try { e.body?.setVelocity?.(0, 0); } catch (_) { try { e.setVelocity(0, 0); } catch (_) {} }
+              } else if (primaryTarget) {
+                const dx = primaryTarget.x - e.x;
+                const dy = primaryTarget.y - e.y;
+                const dist = Math.hypot(dx, dy) || 1;
+                const sp = 180;
+                try { e.body?.setVelocity?.((dx / dist) * sp, (dy / dist) * sp); } catch (_) { try { e.setVelocity((dx / dist) * sp, (dy / dist) * sp); } catch (_) {} }
+              } else {
+                const player = target;
+                if (player && player.active) {
+                  e._hdIdleAngle += e._hdIdleSpeed * dt;
+                  const r = e._hdIdleRadius || 80;
+                  const tx = player.x + Math.cos(e._hdIdleAngle) * r;
+                  const ty = player.y + Math.sin(e._hdIdleAngle) * r;
+                  const dx = tx - e.x;
+                  const dy = ty - e.y;
+                  const len = Math.hypot(dx, dy) || 1;
+                  const sp = 160;
+                  try { e.body?.setVelocity?.((dx / len) * sp, (dy / len) * sp); } catch (_) { try { e.setVelocity((dx / len) * sp, (dy / len) * sp); } catch (_) {} }
+                }
+              }
+
+              // Healing logic
+              if (healTargets.length) {
+                const firstAt = e._hdFirstHealAt || 0;
+                const nextAt = e._hdNextHealAt || 0;
+                const healR = 120;
+                if (nowHd >= firstAt && nowHd >= nextAt) {
+                  let healedAny = false;
+                  for (let i = 0; i < healTargets.length; i += 1) {
+                    const tgt = healTargets[i].d;
+                    const d2 = healTargets[i].d2;
+                    if (d2 > (healR * healR)) continue;
+                    const maxHp = Math.max(1, tgt.maxHp || 1);
+                    const curHp = Math.max(0, tgt.hp || 0);
+                    if (curHp >= maxHp) continue;
+                    const heal = Math.max(1, Math.floor(15 * (e._swarmHealMult || 1)));
+                    tgt.hp = Math.min(maxHp, curHp + heal);
+                    healedAny = true;
+                    // Yellow heal beam
+                    try {
+                      const g = this.add.graphics();
+                      try { g.setDepth(9050); g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+                      try {
+                        g.lineStyle(3, 0xffee66, 0.98).beginPath();
+                        g.moveTo(e.x, e.y - 1);
+                        g.lineTo(tgt.x, tgt.y - 4);
+                        g.strokePath();
+                      } catch (_) {}
+                      try {
+                        this.tweens.add({
+                          targets: g,
+                          alpha: 0,
+                          duration: 200,
+                          ease: 'Quad.easeOut',
+                          onComplete: () => { try { g.destroy(); } catch (_) {} },
+                        });
+                      } catch (_) { try { g.destroy(); } catch (_) {} }
+                    } catch (_) {}
+                  }
+                  if (healedAny) e._hdHoldUntil = nowHd + 200;
+                  e._hdNextHealAt = nowHd + 1000;
+                }
+              }
+            } catch (_) {}
+            return;
+          }
         // Heal Drones: BIT-style hover around their owner boss and periodically heal them
           if (e.isHealDrone) {
             try {
@@ -5540,6 +5761,204 @@ export default class CombatScene extends Phaser.Scene {
             } catch (_) {}
             return;
           }
+        // Swarm Shooter Drones: hover around player and fire burst shots
+        if (e.isSwarmShooterDrone) {
+          try {
+            const player = target;
+            if (!player || !player.active) {
+              try { e.destroy(); } catch (_) {}
+              return;
+            }
+            const dt = (this.game?.loop?.delta || 16.7) / 1000;
+            const nowSd = this.time.now;
+
+            if (e._sdIdleAngle === undefined) e._sdIdleAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            if (e._sdIdleRadius === undefined) e._sdIdleRadius = Phaser.Math.Between(120, 160);
+            if (e._sdIdleSpeed === undefined) e._sdIdleSpeed = Phaser.Math.FloatBetween(1.4, 1.8);
+            if (typeof e._sdNextBurstAt !== 'number') e._sdNextBurstAt = nowSd + Phaser.Math.Between(800, 1400);
+
+            if (e._sdFiring) {
+              try { e.body?.setVelocity?.(0, 0); } catch (_) { try { e.setVelocity(0, 0); } catch (_) {} }
+            } else {
+              e._sdIdleAngle += e._sdIdleSpeed * dt;
+              const r = e._sdIdleRadius || 140;
+              const tx = player.x + Math.cos(e._sdIdleAngle) * r;
+              const ty = player.y + Math.sin(e._sdIdleAngle) * r;
+              const dx = tx - e.x;
+              const dy = ty - e.y;
+              const len = Math.hypot(dx, dy) || 1;
+              const sp = 220;
+              try { e.body?.setVelocity?.((dx / len) * sp, (dy / len) * sp); } catch (_) { try { e.setVelocity((dx / len) * sp, (dy / len) * sp); } catch (_) {} }
+            }
+
+            if (!e._sdFiring && nowSd >= (e._sdNextBurstAt || 0)) {
+              e._sdFiring = true;
+              e._sdAimUntil = nowSd + 750;
+              e._sdBurstRoundsLeft = 2;
+              e._sdShotsLeft = 0;
+              e._sdNextShotAt = 0;
+              if (!e._aimG) {
+                try {
+                  e._aimG = this.add.graphics();
+                  e._aimG.setDepth(8000);
+                  e._aimG.setBlendMode(Phaser.BlendModes.ADD);
+                } catch (_) {}
+              }
+            }
+
+            if (e._sdFiring) {
+              if (nowSd < (e._sdAimUntil || 0)) {
+                const gAim = e._aimG;
+                if (gAim) {
+                  try {
+                    gAim.clear();
+                    gAim.lineStyle(1, 0xff3333, 1);
+                    gAim.beginPath();
+                    gAim.moveTo(e.x, e.y);
+                    gAim.lineTo(player.x, player.y);
+                    gAim.strokePath();
+                  } catch (_) {}
+                }
+              } else {
+                if (e._sdAimUntil) {
+                  e._sdAimUntil = 0;
+                  try { e._aimG?.clear(); } catch (_) {}
+                  e._sdShotsLeft = 5;
+                  e._sdNextShotAt = nowSd;
+                }
+                if (e._sdShotsLeft > 0 && nowSd >= (e._sdNextShotAt || 0)) {
+                  const spread = Phaser.Math.DegToRad(7);
+                  const angBase = Math.atan2(player.y - e.y, player.x - e.x);
+                  const ang = angBase + Phaser.Math.FloatBetween(-spread / 2, spread / 2);
+                  const b = this.enemyBullets.get(e.x, e.y, 'bullet');
+                  if (b) {
+                    b.setActive(true).setVisible(true);
+                    b.setCircle(2).setOffset(-2, -2);
+                    b.setVelocity(Math.cos(ang) * 400, Math.sin(ang) * 400);
+                    b.damage = Math.max(1, Math.floor(8 * (e._swarmDmgMult || 1)));
+                    b.setTint(0xff3333);
+                    b.update = () => {
+                      const view = this.cameras?.main?.worldView;
+                      if (view && !view.contains(b.x, b.y)) { try { b.destroy(); } catch (_) {} }
+                    };
+                  }
+                  e._sdShotsLeft -= 1;
+                  e._sdNextShotAt = nowSd + 80;
+                }
+                if (e._sdShotsLeft <= 0 && e._sdBurstRoundsLeft > 0) {
+                  e._sdBurstRoundsLeft -= 1;
+                  if (e._sdBurstRoundsLeft > 0) {
+                    e._sdShotsLeft = 5;
+                    e._sdNextShotAt = nowSd + 120;
+                  } else {
+                    e._sdFiring = false;
+                    e._sdNextBurstAt = nowSd + Phaser.Math.Between(1600, 2600);
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+          return;
+        }
+        // Swarm Laser Drones: hover around player and sweep a laser
+        if (e.isSwarmLaserDrone) {
+          try {
+            const player = target;
+            if (!player || !player.active) {
+              try { e.destroy(); } catch (_) {}
+              return;
+            }
+            const dt = (this.game?.loop?.delta || 16.7) / 1000;
+            const nowLd = this.time.now;
+
+            if (e._ldIdleAngle === undefined) e._ldIdleAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            if (e._ldIdleRadius === undefined) e._ldIdleRadius = Phaser.Math.Between(120, 160);
+            if (e._ldIdleSpeed === undefined) e._ldIdleSpeed = Phaser.Math.FloatBetween(1.4, 1.8);
+            if (typeof e._ldNextSweepAt !== 'number') e._ldNextSweepAt = nowLd + Phaser.Math.Between(800, 1400);
+
+            if (e._ldSweepActive) {
+              try { e.body?.setVelocity?.(0, 0); } catch (_) { try { e.setVelocity(0, 0); } catch (_) {} }
+            } else {
+              e._ldIdleAngle += e._ldIdleSpeed * dt;
+              const r = e._ldIdleRadius || 140;
+              const tx = player.x + Math.cos(e._ldIdleAngle) * r;
+              const ty = player.y + Math.sin(e._ldIdleAngle) * r;
+              const dx = tx - e.x;
+              const dy = ty - e.y;
+              const len = Math.hypot(dx, dy) || 1;
+              const sp = 220;
+              try { e.body?.setVelocity?.((dx / len) * sp, (dy / len) * sp); } catch (_) { try { e.setVelocity((dx / len) * sp, (dy / len) * sp); } catch (_) {} }
+            }
+
+            if (!e._ldSweepActive && nowLd >= (e._ldNextSweepAt || 0)) {
+              e._ldSweepActive = true;
+              e._ldAimUntil = nowLd + 750;
+              e._ldSweepDuration = 750;
+              e._ldSweepT = 0;
+              e._ldSweepDir = (Math.random() < 0.5) ? -1 : 1;
+              if (!e._aimG) {
+                try {
+                  e._aimG = this.add.graphics();
+                  e._aimG.setDepth(8000);
+                  e._aimG.setBlendMode(Phaser.BlendModes.ADD);
+                } catch (_) {}
+              }
+              if (!e._laserG) {
+                try {
+                  e._laserG = this.add.graphics();
+                  e._laserG.setDepth(8000);
+                  e._laserG.setBlendMode(Phaser.BlendModes.ADD);
+                } catch (_) {}
+              }
+              e._beamTickAccum = 0;
+            }
+
+            if (e._ldSweepActive) {
+              const dtMs = (this.game?.loop?.delta || 16.7);
+              if (nowLd < (e._ldAimUntil || 0)) {
+                const gAim = e._aimG;
+                if (gAim) {
+                  try {
+                    gAim.clear();
+                    gAim.lineStyle(1, 0xaa66ff, 1);
+                    gAim.beginPath();
+                    gAim.moveTo(e.x, e.y);
+                    gAim.lineTo(player.x, player.y);
+                    gAim.strokePath();
+                  } catch (_) {}
+                }
+              } else {
+                if (e._ldAimUntil) {
+                  e._ldAimUntil = 0;
+                  try { e._aimG?.clear(); } catch (_) {}
+                  const base = Math.atan2(player.y - e.y, player.x - e.x);
+                  e._ldSweepFrom = base - Phaser.Math.DegToRad(20);
+                  e._ldSweepTo = base + Phaser.Math.DegToRad(20);
+                  e._ldSweepT = 0;
+                }
+                e._ldSweepT += dtMs;
+                const t = Phaser.Math.Clamp(e._ldSweepT / (e._ldSweepDuration || 750), 0, 1);
+                const tt = (e._ldSweepDir === -1) ? (1 - t) : t;
+                const ang = e._ldSweepFrom + (e._ldSweepTo - e._ldSweepFrom) * tt;
+                const dps = 30 * (e._swarmDpsMult || 1);
+                this.renderPrismBeam(e, ang, dtMs / 1000, {
+                  applyDamage: true,
+                  damagePlayer: true,
+                  target,
+                  dps,
+                  tick: 0.05,
+                });
+                if (t >= 1) {
+                  e._ldSweepActive = false;
+                  e._ldNextSweepAt = nowLd + Phaser.Math.Between(1600, 2600);
+                  try { e._laserG?.clear(); } catch (_) {}
+                  try { e._aimG?.clear(); } catch (_) {}
+                }
+              }
+            }
+          } catch (_) {}
+          return;
+        }
         // Laser Drones: BIT-style hover around the player and sweep a Prism-style laser
         if (e.isLaserDrone) {
           try {
@@ -5614,7 +6033,7 @@ export default class CombatScene extends Phaser.Scene {
                 if (gAim) {
                   try {
                     gAim.clear();
-                    gAim.lineStyle(1, 0xff2222, 1);
+                    gAim.lineStyle(1, 0xaa66ff, 1);
                     gAim.beginPath();
                     gAim.moveTo(e.x, e.y);
                     gAim.lineTo(player.x, player.y);
@@ -6682,7 +7101,8 @@ export default class CombatScene extends Phaser.Scene {
 
     // Check clear (count only enemies that are active AND have HP left)
     const alive = this.enemies.getChildren().filter((e) => e.active && (typeof e.hp === 'number' ? e.hp > 0 : true)).length;
-    if (alive === 0 && !this.exitActive) {
+    const swarmPending = !!(this.gs?.gameMode === 'Swarm' && this._swarmState && (this._swarmState.wavesSpawned || 0) < (this._swarmState.totalWaves || 0));
+    if (alive === 0 && !this.exitActive && !swarmPending) {
       this.exitActive = true;
       this.prompt.setText('Room clear! E to exit');
       this.exitRect = new Phaser.Geom.Rectangle(this.scale.width - 50, this.scale.height / 2 - 30, 40, 60);
@@ -6952,7 +7372,7 @@ export default class CombatScene extends Phaser.Scene {
     let innerColor = 0x66aaff;
     let impactColor = 0xff4455;
     try {
-      if (e && e.isLaserDrone) {
+      if (e && (e.isLaserDrone || e.isSwarmLaserDrone)) {
         outerColor = 0xaa66ff;
         innerColor = 0xaa66ff;
         impactColor = 0xaa66ff;

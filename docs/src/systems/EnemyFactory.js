@@ -580,8 +580,8 @@ export function createGrenadierEnemy(scene, x, y, hp = 260, damage = 10, speed =
   }
 
   // Laser Drone: offensive drone that orbits Hazel and sweeps a laser at the player
-  export function createLaserDroneEnemy(scene, x, y, hp = 20, ownerBoss = null) {
-    const d = scene.physics.add.sprite(x, y, 'enemy_square');
+export function createLaserDroneEnemy(scene, x, y, hp = 20, ownerBoss = null) {
+  const d = scene.physics.add.sprite(x, y, 'enemy_square');
     // 10x10 hitbox, same as HealDrone
     d.setSize(10, 10).setOffset(0, 0).setCollideWorldBounds(true);
     d.hp = hp;
@@ -594,6 +594,53 @@ export function createGrenadierEnemy(scene, x, y, hp = 260, damage = 10, speed =
     // Orbit/laser state (initialized lazily in scene update)
     d._ldSpawnAt = scene.time.now;
     // Attach visuals using the same helper as other enemies so sprite + hitbox follow the physics body
-    try { _attachEnemyVisuals(d, 'enemy_laser_drone', null, 10, 10, 1.0); } catch (_) {}
-    return d;
-  }
+  try { _attachEnemyVisuals(d, 'enemy_laser_drone', null, 10, 10, 1.0); } catch (_) {}
+  return d;
+}
+
+// Swarm variants: mirrors of boss drones, but flagged separately for Swarm mode logic
+export function createSwarmHealDroneEnemy(scene, x, y, hp = 30) {
+  const d = scene.physics.add.sprite(x, y, 'enemy_square');
+  d.setSize(10, 10).setOffset(0, 0).setCollideWorldBounds(true);
+  d.hp = hp;
+  d.maxHp = hp;
+  d.damage = 0;
+  d.speed = 0;
+  d.isEnemy = true;
+  d.isSwarmHealDrone = true;
+  d._hdAngle = 0;
+  d._hdRadius = 48;
+  d._hdSpawnAt = scene.time.now;
+  d._hdFirstHealAt = d._hdSpawnAt + 2000;
+  d._hdNextHealAt = d._hdFirstHealAt;
+  try { _attachEnemyVisuals(d, 'enemy_heal_drone', null, 10, 10, 1.0); } catch (_) {}
+  return d;
+}
+
+export function createSwarmLaserDroneEnemy(scene, x, y, hp = 20) {
+  const d = scene.physics.add.sprite(x, y, 'enemy_square');
+  d.setSize(10, 10).setOffset(0, 0).setCollideWorldBounds(true);
+  d.hp = hp;
+  d.maxHp = hp;
+  d.damage = 0;
+  d.speed = 0;
+  d.isEnemy = true;
+  d.isSwarmLaserDrone = true;
+  d._ldSpawnAt = scene.time.now;
+  try { _attachEnemyVisuals(d, 'enemy_laser_drone', null, 10, 10, 1.0); } catch (_) {}
+  return d;
+}
+
+export function createSwarmShooterDroneEnemy(scene, x, y, hp = 20) {
+  const d = scene.physics.add.sprite(x, y, 'enemy_square');
+  d.setSize(10, 10).setOffset(0, 0).setCollideWorldBounds(true);
+  d.hp = hp;
+  d.maxHp = hp;
+  d.damage = 0;
+  d.speed = 0;
+  d.isEnemy = true;
+  d.isSwarmShooterDrone = true;
+  d._sdSpawnAt = scene.time.now;
+  try { _attachEnemyVisuals(d, 'enemy_laser_drone', null, 10, 10, 1.0); } catch (_) {}
+  return d;
+}

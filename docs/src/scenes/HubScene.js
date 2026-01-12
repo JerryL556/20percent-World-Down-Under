@@ -37,6 +37,20 @@ export default class HubScene extends Phaser.Scene {
             ui.deepDiveText.setVisible(false);
           }
         } catch (_) {}
+        // Swarm label
+        try {
+          if (!ui.swarmText || !ui.swarmText.active) {
+            ui.swarmText = ui.add.text(12, 28, '', { fontFamily: 'monospace', fontSize: 12, color: '#66ffcc' }).setOrigin(0, 0).setAlpha(0.95);
+          }
+          if (this.gs?.gameMode === 'Swarm') {
+            const best = this.gs?.swarmBest || { level: 0 };
+            const L = Math.max(0, best.level || 0);
+            ui.swarmText.setText(`Deepest swarm: ${L}`);
+            ui.swarmText.setVisible(true);
+          } else {
+            ui.swarmText.setVisible(false);
+          }
+        } catch (_) {}
 
         // Campaign label
         try {
@@ -80,6 +94,7 @@ export default class HubScene extends Phaser.Scene {
             const m = this.gs?.gameMode || 'Normal';
             if (m === 'BossRush') return 'Mode: Boss Rush';
             if (m === 'DeepDive') return 'Mode: Deep Dive';
+            if (m === 'Swarm') return 'Mode: Swarm';
             return 'Mode: Campaign';
           } catch (_) { return 'Mode: Campaign'; }
         };
@@ -117,6 +132,27 @@ export default class HubScene extends Phaser.Scene {
       ensureDeepDiveLabel();
       this.time.delayedCall(50, ensureDeepDiveLabel);
       this.time.delayedCall(150, ensureDeepDiveLabel);
+    } catch (_) {}
+    // Swarm indicator in Hub when Swarm mode is selected
+    try {
+      const ensureSwarmLabel = () => {
+        const ui = this.scene.get(SceneKeys.UI);
+        if (!ui) return;
+        if (!ui.swarmText || !ui.swarmText.active) {
+          ui.swarmText = ui.add.text(12, 28, '', { fontFamily: 'monospace', fontSize: 12, color: '#66ffcc' }).setOrigin(0, 0).setAlpha(0.95);
+        }
+        if (this.gs?.gameMode === 'Swarm') {
+          const best = this.gs?.swarmBest || { level: 0 };
+          const L = Math.max(0, best.level || 0);
+          ui.swarmText.setText(`Deepest swarm: ${L}`);
+          ui.swarmText.setVisible(true);
+        } else {
+          ui.swarmText.setVisible(false);
+        }
+      };
+      ensureSwarmLabel();
+      this.time.delayedCall(50, ensureSwarmLabel);
+      this.time.delayedCall(150, ensureSwarmLabel);
     } catch (_) {}
 
     // Campaign indicator in Hub when Campaign (Normal) mode is selected
@@ -309,6 +345,7 @@ export default class HubScene extends Phaser.Scene {
         const m = this.gs?.gameMode || 'Normal';
         if (m === 'BossRush') return 'Mode: Boss Rush';
         if (m === 'DeepDive') return 'Mode: Deep Dive';
+        if (m === 'Swarm') return 'Mode: Swarm';
         return 'Mode: Campaign';
       } catch (_) { return 'Mode: Campaign'; }
     };
@@ -501,7 +538,7 @@ export default class HubScene extends Phaser.Scene {
     if (this.panel) return;
     const { width } = this.scale;
     // Taller panel to support vertical list + description area
-    const panelW = 320; const panelH = 340; const panelX = width / 2 - panelW / 2; const panelY = 80;
+    const panelW = 320; const panelH = 370; const panelX = width / 2 - panelW / 2; const panelY = 80;
     this.panel = drawPanel(this, panelX, panelY, panelW, panelH);
     this.panel._type = 'modeSelect';
     const title = this.add.text(width / 2, 105, 'Select Mode', { fontFamily: 'monospace', fontSize: 18, color: '#ffffff' }).setOrigin(0.5);
@@ -517,7 +554,7 @@ export default class HubScene extends Phaser.Scene {
         this.gs.setGameMode('BossRush');
         SaveManager.saveToLocal(this.gs);
       } catch (_) {}
-      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, rangeBtn, desc, closeBtn]);
+      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, swarmBtn, rangeBtn, desc, closeBtn]);
     });
     const deepDiveBtn = makeTextButton(this, cx, y0 + 2 * line, 'Deep Dive', () => {
       try {
@@ -525,16 +562,24 @@ export default class HubScene extends Phaser.Scene {
         this.gs.setGameMode('DeepDive');
         SaveManager.saveToLocal(this.gs);
       } catch (_) {}
-      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, rangeBtn, desc, closeBtn]);
+      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, swarmBtn, rangeBtn, desc, closeBtn]);
     });
-    const rangeBtn = makeTextButton(this, cx, y0 + 3 * line, 'Shooting Range', () => {
+    const swarmBtn = makeTextButton(this, cx, y0 + 3 * line, 'Swarm', () => {
+      try {
+        this.gs.shootingRange = false;
+        this.gs.setGameMode('Swarm');
+        SaveManager.saveToLocal(this.gs);
+      } catch (_) {}
+      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, swarmBtn, rangeBtn, desc, closeBtn]);
+    });
+    const rangeBtn = makeTextButton(this, cx, y0 + 4 * line, 'Shooting Range', () => {
       try { this.gs.setGameMode('Normal'); this.gs.shootingRange = true; SaveManager.saveToLocal(this.gs); } catch (_) {}
-      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, rangeBtn, desc, closeBtn]);
+      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, swarmBtn, rangeBtn, desc, closeBtn]);
       // Do not auto-enter; use the portal (E) like other modes
     });
 
     // Description area (placeholder; ready to populate detailed text)
-    const desc = this.add.text(cx, y0 + 4 * line + 20, 'Select a mode to view its description', {
+    const desc = this.add.text(cx, y0 + 5 * line + 20, 'Select a mode to view its description', {
       fontFamily: 'monospace', fontSize: 12, color: '#cccccc', wordWrap: { width: panelW - 40 }, align: 'center', lineSpacing: 2,
     }).setOrigin(0.5, 0);
 
@@ -544,13 +589,14 @@ export default class HubScene extends Phaser.Scene {
       campaignBtn.on('pointerover', () => setDesc('Campaign: Progress through the game'));
       bossRushBtn.on('pointerover', () => setDesc('Boss Rush: Fight all three bosses in a row'));
       deepDiveBtn.on('pointerover', () => setDesc('Deep Dive: Endless escalating rooms with stage cycles.'));
+      swarmBtn.on('pointerover', () => setDesc('Swarm: Endless drone waves with level scaling.'));
       rangeBtn.on('pointerover', () => setDesc('Shooting Range: Test weapons and builds in a safe arena.'));
     } catch (_) {}
 
     const closeBtn = makeTextButton(this, cx, panelY + panelH - 22, 'Close', () => {
-      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, rangeBtn, desc, closeBtn]);
+      this.closePanel([title, campaignBtn, bossRushBtn, deepDiveBtn, swarmBtn, rangeBtn, desc, closeBtn]);
     });
-    this.panel._extra = [title, campaignBtn, bossRushBtn, deepDiveBtn, rangeBtn, desc, closeBtn];
+    this.panel._extra = [title, campaignBtn, bossRushBtn, deepDiveBtn, swarmBtn, rangeBtn, desc, closeBtn];
   }
 
   openDifficultyPanel() {
@@ -621,7 +667,7 @@ export default class HubScene extends Phaser.Scene {
       this.hints = [
         // General game / modes
         '1#: Utilize the Shooting Range: you can spawn all kinds of enemies and use the dummy to test how different weapons perform.',
-        '2#: Explore multiple modes: Campaign offers the most authentic experience, Deep Dive focuses on clearing waves, and Boss Rush is dedicated to consecutive boss fights.',
+        '2#: Explore multiple modes: Campaign offers the most authentic experience, Deep Dive focuses on clearing waves, Swarm is a pure drone onslaught, and Boss Rush is dedicated to consecutive boss fights.',
 
         // Weapons, mods, cores
         '3#: Armor and armor mods are your main defensive upgrades. Investing in them can reduce incoming damage, improve survivability, and make mistakes more forgiving.',
@@ -822,6 +868,7 @@ export default class HubScene extends Phaser.Scene {
         if (this.gs?.shootingRange) this.prompt.setText('Mode: Shooting Range');
         else if (this.gs?.gameMode === 'BossRush') this.prompt.setText('Mode: Boss Rush');
         else if (this.gs?.gameMode === 'DeepDive') this.prompt.setText('Mode: Deep Dive');
+        else if (this.gs?.gameMode === 'Swarm') this.prompt.setText('Mode: Swarm');
         else this.prompt.setText('Mode: Campaign');
       } catch (_) { this.prompt.setText('Mode: Campaign'); }
     }
@@ -841,6 +888,24 @@ export default class HubScene extends Phaser.Scene {
           ui.deepDiveText.setVisible(true);
         } else {
           ui.deepDiveText.setVisible(false);
+        }
+      }
+    } catch (_) {}
+
+    // Keep Swarm best record label updated every frame while in Hub
+    try {
+      const ui = this.scene.get(SceneKeys.UI);
+      if (ui) {
+        if (!ui.swarmText || !ui.swarmText.active) {
+          ui.swarmText = ui.add.text(12, 28, '', { fontFamily: 'monospace', fontSize: 12, color: '#66ffcc' }).setOrigin(0, 0).setAlpha(0.95);
+        }
+        if (this.gs?.gameMode === 'Swarm') {
+          const best = this.gs?.swarmBest || { level: 0 };
+          const L = Math.max(0, best.level || 0);
+          ui.swarmText.setText(`Deepest swarm: ${L}`);
+          ui.swarmText.setVisible(true);
+        } else {
+          ui.swarmText.setVisible(false);
         }
       }
     } catch (_) {}
