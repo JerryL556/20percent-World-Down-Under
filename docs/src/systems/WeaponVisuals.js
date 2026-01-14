@@ -12,6 +12,7 @@ export const WEAPON_TEXTURES = {
   railgun: { key: 'weapon_railgun', path: 'assets/RG.png', height: 8, mult: 1.3 }, // increased
   // Laser now uses dedicated art (slightly larger)
   laser: { key: 'weapon_laser', path: 'assets/Laser.png', height: 8, mult: 1.05 },
+  laser_dmr: { key: 'weapon_laser_dmr', path: 'assets/Laser DMR.png', height: 8, mult: 1.05 },
   rocket: { key: 'weapon_rocket', path: 'assets/RKT.png', height: 9, mult: 1.7 }, // slightly larger
   mgl: { key: 'weapon_mgl', path: 'assets/MGL.png', height: 9, mult: 1.35 }, // dedicated MGL art
   guided_missiles: { key: 'weapon_guided_missiles', path: 'assets/MicroMissile.png', height: 9, mult: 1.25 }, // slightly smaller guided missiles

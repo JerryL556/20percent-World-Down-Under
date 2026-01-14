@@ -4145,8 +4145,14 @@ export default class CombatScene extends Phaser.Scene {
         // Cancel rail charging/aim if any
         try { if (this.rail?.charging) this.rail.charging = false; } catch (_) {}
         this.endRailAim?.();
-        // Clear laser beam if present
-        try { this.laser?.g?.clear?.(); } catch (_) {}
+        // Clear laser beams if present
+        try {
+          const lasers = this.laserByWeapon || {};
+          Object.values(lasers).forEach((lz) => {
+            try { lz?.g?.clear?.(); } catch (_) {}
+            try { lz?.mg?.clear?.(); } catch (_) {}
+          });
+        } catch (_) {}
       }
     }
 
@@ -9549,21 +9555,202 @@ export default class CombatScene extends Phaser.Scene {
 
   // Laser mechanics: continuous beam with heat/overheat and ignite buildup
   handleLaser(now, weapon, ptr, dt) {
-    if (!this.laser) this.laser = { heat: 0, firing: false, overheat: false, startedAt: 0, coolDelayUntil: 0, g: null, lastTickAt: 0 };
-    // Initialize graphics once
-    if (!this.laser.g) {
-      this.laser.g = this.add.graphics();
-      try { this.laser.g.setDepth(8000); } catch (_) {}
-      try { this.laser.g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+    if (!this.laserByWeapon) this.laserByWeapon = {};
+    const key = weapon?.id || 'laser';
+    if (!this.laserByWeapon[key]) {
+      this.laserByWeapon[key] = { heat: 0, firing: false, overheat: false, startedAt: 0, coolDelayUntil: 0, g: null, lastTickAt: 0 };
     }
-    if (!this.laser.mg) {
-      this.laser.mg = this.add.graphics();
-      try { this.laser.mg.setDepth(9000); } catch (_) {}
-      try { this.laser.mg.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+    const lz = this.laserByWeapon[key];
+    // Initialize graphics once per weapon
+    if (!lz.g) {
+      lz.g = this.add.graphics();
+      try { lz.g.setDepth(8000); } catch (_) {}
+      try { lz.g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
     }
-    const lz = this.laser;
+    if (!lz.mg) {
+      lz.mg = this.add.graphics();
+      try { lz.mg.setDepth(9000); } catch (_) {}
+      try { lz.mg.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+    }
     const canPress = ptr?.isDown && ((ptr.buttons & 1) === 1);
+    const isDmr = weapon?.id === 'laser_dmr';
     const canFire = canPress && !lz.overheat;
+    if (isDmr) {
+      const hasOverheatCore = weapon._core === 'laser_dmr_overheat';
+      const heatPerShot = hasOverheatCore ? (1 / 5) : (1 / 6);
+      const coolDelay = 0.5;
+      const coolFastPerSec = 0.6;
+      const fireRateMs = weapon.fireRateMs || 150;
+      const wantsClick = !!ptr?.justDown || (!lz._dmrWasDown && canPress);
+
+      if (!lz._lastShotAt) lz._lastShotAt = 0;
+      if (!lz._dmrCooling) lz._dmrCooling = false;
+
+      // Fire discrete laser shots
+      if (wantsClick && !lz.overheat && now >= (lz._lastShotAt || 0) + fireRateMs) {
+        lz.firing = true;
+        lz._lastShotAt = now;
+        lz.coolDelayUntil = now + Math.floor(coolDelay * 1000);
+        lz.heat = Math.min(1, lz.heat + heatPerShot);
+
+        const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, ptr.worldX, ptr.worldY);
+        const muzzle = getWeaponMuzzleWorld(this, 2);
+        const sx = muzzle.x;
+        const sy = muzzle.y;
+        const hit = this.computeLaserEnd(angle, sx, sy);
+        const ex = hit.ex, ey = hit.ey;
+        const hitEnemy = hit.hitEnemy;
+
+        // Dandelion-style beam VFX, smaller width, blue tint
+        try {
+          const g = this.add.graphics();
+          try { g.setDepth(8050); g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+          try {
+            g.lineStyle(4, 0x66aaff, 0.98).beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.strokePath();
+            g.lineStyle(2, 0xaaddff, 1).beginPath(); g.moveTo(sx, sy - 1); g.lineTo(ex, ey); g.strokePath();
+          } catch (_) {}
+          this.tweens.add({
+            targets: g,
+            alpha: 0,
+            duration: 160,
+            ease: 'Quad.easeOut',
+            onComplete: () => { try { g.destroy(); } catch (_) {} },
+          });
+        } catch (_) {}
+        // Muzzle VFX (Dandelion laser machinegun style, blue and smaller)
+        try {
+          muzzleFlashSplit(this, sx, sy, { angle, color: 0x66aaff, count: 2, spreadDeg: 20, length: 12, thickness: 3 });
+          const burst = { spreadDeg: 16, speedMin: 90, speedMax: 180, lifeMs: 180, color: 0x88bbff, size: 1, alpha: 0.9 };
+          pixelSparks(this, sx, sy, { angleRad: angle - Math.PI / 2, count: 6, ...burst });
+          pixelSparks(this, sx, sy, { angleRad: angle + Math.PI / 2, count: 6, ...burst });
+        } catch (_) {}
+
+        // Apply damage to first enemy hit
+        if (hitEnemy && hitEnemy.active) {
+          const dmg = Math.max(1, Math.floor(weapon.damage || 25));
+          if (hitEnemy.isDummy) {
+            this._dummyDamage = (this._dummyDamage || 0) + dmg;
+          } else {
+            if (typeof hitEnemy.hp !== 'number') hitEnemy.hp = hitEnemy.maxHp || 20;
+            hitEnemy.hp -= dmg;
+            try { this._flashEnemyHit?.(hitEnemy); } catch (_) {}
+            if (hitEnemy.hp <= 0) this.killEnemy(hitEnemy);
+          }
+          try { impactBurst(this, ex, ey, { color: 0x66aaff, size: 'small' }); } catch (_) {}
+        }
+        // Damage soft barricades the same as enemies
+        try {
+          const arr = this.barricadesSoft?.getChildren?.() || [];
+          const dmg = Math.max(1, Math.floor(weapon.damage || 25));
+          for (let i = 0; i < arr.length; i += 1) {
+            const s = arr[i]; if (!s?.active) continue;
+            if (!s.getData('destructible')) continue;
+            const sRect = s.getBounds?.() || new Phaser.Geom.Rectangle(s.x - 8, s.y - 8, 16, 16);
+            const line = new Phaser.Geom.Line(sx, sy, ex, ey);
+            if (Phaser.Geom.Intersects.LineToRectangle(line, sRect)) {
+              const hp0 = (typeof s.getData('hp') === 'number') ? s.getData('hp') : 20;
+              const hp1 = hp0 - dmg;
+              if (hp1 <= 0) { try { s.destroy(); } catch (_) {} }
+              else s.setData('hp', hp1);
+              try { impactBurst(this, s.x, s.y, { color: 0x66aaff, size: 'small' }); } catch (_) {}
+              break;
+            }
+          }
+        } catch (_) {}
+
+        if (lz.heat >= 1 && !lz.overheat) {
+          lz.overheat = true;
+          if (hasOverheatCore) {
+            try {
+              const cx = this.player.x; const cy = this.player.y;
+              const radius = 120; const r2 = radius * radius;
+              const enemies = this.enemies?.getChildren?.() || [];
+              for (let i = 0; i < enemies.length; i += 1) {
+                const e = enemies[i]; if (!e?.active) continue;
+                const dx = e.x - cx; const dy = e.y - cy;
+                if ((dx * dx + dy * dy) > r2) continue;
+                if (e.isDummy) {
+                  this._dummyDamage = (this._dummyDamage || 0) + 10;
+                } else {
+                  if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
+                  e.hp -= 10;
+                  try { this._flashEnemyHit?.(e); } catch (_) {}
+                  if (e.hp <= 0) this.killEnemy(e);
+                }
+                e._igniteValue = Math.min(10, (e._igniteValue || 0) + 20);
+                if ((e._igniteValue || 0) >= 10) {
+                  e._ignitedUntil = now + 2000;
+                  e._igniteValue = 0;
+                  if (!e._igniteIndicator) {
+                    e._igniteIndicator = this.add.graphics();
+                    try { e._igniteIndicator.setDepth(9000); } catch (_) {}
+                    e._igniteIndicator.fillStyle(0xff3333, 1).fillCircle(0, 0, 2);
+                  }
+                  try { e._igniteIndicator.setPosition(e.x, e.y - 14); } catch (_) {}
+                }
+              }
+              // Flame-style burst in a full circle
+              pixelSparks(this, cx, cy, {
+                angleRad: 0,
+                count: 40,
+                spreadDeg: 360,
+                speedMin: 140,
+                speedMax: 360,
+                lifeMs: 360,
+                color: 0xffaa33,
+                size: 4,
+                alpha: 0.9,
+              });
+              // Orange ring to indicate range
+              const ring = this.add.graphics({ x: cx, y: cy });
+              try { ring.setDepth(9000); ring.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+              ring.lineStyle(3, 0xffaa33, 0.9).strokeCircle(0, 0, radius);
+              this.tweens.add({
+                targets: ring,
+                alpha: 0,
+                duration: 320,
+                ease: 'Quad.easeOut',
+                onComplete: () => { try { ring.destroy(); } catch (_) {} },
+              });
+            } catch (_) {}
+          }
+          this.reload.active = true;
+          this.reload.duration = this.getActiveReloadMs();
+          this.reload.until = now + this.reload.duration;
+          this.registry.set('reloadActive', true);
+          this.registry.set('reloadProgress', 0);
+        }
+      } else {
+        lz.firing = false;
+      }
+
+      // Cooling
+      if (!lz.overheat) {
+        if (now >= (lz.coolDelayUntil || 0)) {
+          lz.heat = Math.max(0, lz.heat - coolFastPerSec * dt);
+        }
+      } else {
+        if (!this.reload.active || now >= this.reload.until) {
+          lz.overheat = false;
+          lz.heat = 0;
+          this.reload.active = false;
+          this.reload.duration = 0;
+          this.registry.set('reloadActive', false);
+          this.registry.set('reloadProgress', 1);
+        } else {
+          const remaining = Math.max(0, this.reload.until - now);
+          const dur = Math.max(1, this.reload.duration || this.getActiveReloadMs());
+          const prog = 1 - Math.min(1, remaining / dur);
+          this.registry.set('reloadActive', true);
+          this.registry.set('reloadProgress', prog);
+        }
+      }
+
+      this.registry.set('laserHeat', lz.heat);
+      this.registry.set('laserOverheated', !!lz.overheat);
+      lz._dmrWasDown = !!ptr?.isDown;
+      return;
+    }
     const heatPerSec = 1 / 6; // overheat in 6s
     const coolDelay = 0.2; // start cooling after 0.2s when not firing
     const coolFastPerSec = 0.75; // fast cool

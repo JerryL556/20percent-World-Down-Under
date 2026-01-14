@@ -138,6 +138,19 @@ export const weaponCores = [
     },
   },
   {
+    id: 'core_laser_dmr_overheat',
+    name: 'Overheat Surge',
+    onlyFor: 'laser_dmr',
+    desc: [
+      '+ Overheating triggers a 120px fire burst that damages and ignites enemies',
+      '- Higher thermal load per shot',
+    ].join('\n'),
+    apply: (w) => {
+      if (!w || w.id !== 'laser_dmr') return w;
+      return { ...w, _core: 'laser_dmr_overheat' };
+    },
+  },
+  {
     id: 'core_flame_compression',
     name: 'Compression Nozzle',
     onlyFor: 'flamethrower',

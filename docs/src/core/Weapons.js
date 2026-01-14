@@ -39,6 +39,26 @@ export const weaponDefs = [
     reloadMs: 2000, // cooldown duration after overheat
   },
   {
+    id: 'laser_dmr',
+    name: 'Laser DMR',
+    desc: [
+      'A laser marksman rifle that fires precise, instant beams.',
+      'Uses heat like the laser but in discrete shots.',
+    ].join('\n'),
+    damage: 35,
+    fireRateMs: 300, // 200 RPM
+    bulletSpeed: 0,
+    pelletCount: 1,
+    spreadDeg: 0,
+    maxSpreadDeg: 0,
+    color: 0x66aaff,
+    price: 300,
+    magSize: 1, // unused; heat-based
+    singleFire: true,
+    isLaser: true,
+    reloadMs: 2500,
+  },
+  {
     id: 'flamethrower',
     name: 'Flamethrower',
     desc: [
@@ -94,7 +114,7 @@ export const weaponDefs = [
       'Hard-hitting prototype that pierces barricades, shields, and enemies.',
       'Launches a tungsten slug via electromagnetic coils; charging boosts damage, accuracy, and velocity.',
     ].join('\n'),
-    damage: 24,
+    damage: 48,
     fireRateMs: 350,
     bulletSpeed: 1560,
     pelletCount: 1,
