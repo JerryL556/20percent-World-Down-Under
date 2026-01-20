@@ -7044,7 +7044,7 @@ export default class CombatScene extends Phaser.Scene {
               const extra = Phaser.Math.DegToRad(50);
               angle += Phaser.Math.FloatBetween(-extra/2, extra/2);
             }
-            const snipeSpeed = 1200;
+              const snipeSpeed = 1350;
             const vx = Math.cos(angle) * snipeSpeed;
             const vy = Math.sin(angle) * snipeSpeed;
             const b = this.enemyBullets.get(e.x, e.y, 'bullet');
