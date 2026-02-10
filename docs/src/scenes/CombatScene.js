@@ -1448,7 +1448,7 @@ export default class CombatScene extends Phaser.Scene {
       (e, s) => {
         // Heal/Laser Drones ignore hard barricade collisions
         try {
-          if (e?.isHealDrone || e?.isLaserDrone || e?.isSwarmHealDrone || e?.isSwarmLaserDrone || e?.isSwarmShooterDrone) return false;
+          if (e?.isHealDrone || e?.isLaserDrone) return false;
         } catch (_) {}
         // Let Dandelion ignore hard barricade collision response while dashing/assaulting
         try {
@@ -1470,7 +1470,7 @@ export default class CombatScene extends Phaser.Scene {
       (e, s) => {
         // Heal/Laser Drones ignore soft barricade collisions
         try {
-          if (e?.isHealDrone || e?.isLaserDrone || e?.isSwarmHealDrone || e?.isSwarmLaserDrone || e?.isSwarmShooterDrone) return false;
+          if (e?.isHealDrone || e?.isLaserDrone) return false;
         } catch (_) {}
         // Let Dandelion ignore barricade collision response while dashing/assaulting;
         // soft barricades it touches are explicitly destroyed in _dandelionBreakSoftBarricades.
@@ -1494,7 +1494,7 @@ export default class CombatScene extends Phaser.Scene {
       (e, s) => {
         // Heal/Laser Drones ignore soft barricade break-on-push logic
         try {
-          if (e?.isHealDrone || e?.isLaserDrone || e?.isSwarmHealDrone || e?.isSwarmLaserDrone || e?.isSwarmShooterDrone) return false;
+          if (e?.isHealDrone || e?.isLaserDrone) return false;
         } catch (_) {}
         // While Dandelion is dashing/assault-dashing, ignore soft barricade collision resolution here too
         try {
