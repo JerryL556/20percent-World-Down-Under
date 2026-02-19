@@ -136,12 +136,28 @@ export const abilityUpgradeDefs = Object.freeze({
     },
   },
   stealth_decoy: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Shadow Stride', desc: 'Increase player speed by 7.5%.' },
+      major: { name: 'Ghost Surge', desc: 'Increase player speed by 50% during stealth.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Sharpened Strike', desc: 'Double melee damage.' },
+      major: { name: 'Silent Execution', desc: 'Enhanced stealth-break melee damage is tripled.' },
+    },
   },
   directional_shield: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Tactical Cycling', desc: 'After killing an enemy, reload 50% faster for 2s.' },
+      major: { name: 'Shield Refeed', desc: 'Killing an enemy while Directional Shield is active restores 150 shield HP to it.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Dash Refund', desc: 'Killing an enemy refreshes 1 dash charge.' },
+      major: { name: 'Aegis Momentum', desc: 'Gain +25% movement speed while Directional Shield is active.' },
+    },
   },
   vulcan_turret: {
     pathA: {

@@ -408,8 +408,16 @@ export default class CombatScene extends Phaser.Scene {
     const caster = this.player;
     if (!caster) return;
     const breakingStealth = this.isStealthed();
+    const stealthPathBMinor = ((this.gs?.abilityId === 'stealth_decoy') && this._hasAbilityUpgrade('stealth_decoy', 'pathB', 'minor'));
+    const stealthPathBMajor = ((this.gs?.abilityId === 'stealth_decoy') && this._hasAbilityUpgrade('stealth_decoy', 'pathB', 'major'));
     if (breakingStealth) this.endStealthDecoy();
-    const meleeDmg = breakingStealth ? 100 : 10;
+    let meleeDmg = breakingStealth ? 100 : 10;
+    if (breakingStealth) {
+      if (stealthPathBMajor) meleeDmg = 300;
+      else if (stealthPathBMinor) meleeDmg = 200;
+    } else if (stealthPathBMinor) {
+      meleeDmg = 20;
+    }
     const ptr = this.inputMgr.pointer;
     const ang = Math.atan2(ptr.worldY - caster.y, ptr.worldX - caster.x);
     const totalDeg = 150; const half = Phaser.Math.DegToRad(totalDeg / 2);
@@ -861,6 +869,30 @@ export default class CombatScene extends Phaser.Scene {
     try {
       // BITs Path B minor: laser overheat cooldown 40% faster.
       if ((this.gs?.abilityId === 'bits') && this._hasAbilityUpgrade('bits', 'pathB', 'minor')) return 0.6;
+      return 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  _getStealthDecoySpeedMult() {
+    try {
+      let mul = 1;
+      if ((this.gs?.abilityId === 'stealth_decoy') && this._hasAbilityUpgrade('stealth_decoy', 'pathA', 'minor')) {
+        mul *= 1.075;
+      }
+      if ((this.gs?.abilityId === 'stealth_decoy') && this._hasAbilityUpgrade('stealth_decoy', 'pathA', 'major') && this.isStealthed()) {
+        mul *= 1.5;
+      }
+      return mul;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  _getDirectionalShieldSpeedMult() {
+    try {
+      if ((this.gs?.abilityId === 'directional_shield') && this._hasAbilityUpgrade('directional_shield', 'pathB', 'major') && this._dirShield?.active) return 1.25;
       return 1;
     } catch (_) {
       return 1;
@@ -2496,6 +2528,28 @@ export default class CombatScene extends Phaser.Scene {
         const eff = getPlayerEffects(this.gs) || {};
         const maxHp = Math.max(1, (this.gs?.maxHp || 0) + (eff.bonusHp || 0));
         this.gs.hp = Math.min(maxHp, (this.gs?.hp || 0) + 1);
+      }
+    } catch (_) {}
+    // Directional Shield Path A (minor): after a kill, reload 50% faster for 2s.
+    try {
+      if ((this.gs?.abilityId === 'directional_shield') && this._hasAbilityUpgrade('directional_shield', 'pathA', 'minor') && !e.isDummy) {
+        this._dirShieldReloadBuffUntil = this.time.now + 2000;
+      }
+    } catch (_) {}
+    // Directional Shield Path A (major): while shield is active, kills restore 150 shield HP to it.
+    try {
+      if ((this.gs?.abilityId === 'directional_shield') && this._hasAbilityUpgrade('directional_shield', 'pathA', 'major') && !e.isDummy && this._dirShield?.active) {
+        const maxHp = Math.max(0, this._dirShield.maxHp || 0);
+        const curHp = Math.max(0, this._dirShield.hp || 0);
+        this._dirShield.hp = Math.min(maxHp, curHp + 150);
+      }
+    } catch (_) {}
+    // Directional Shield Path B (minor): each kill refreshes one dash charge.
+    try {
+      if ((this.gs?.abilityId === 'directional_shield') && this._hasAbilityUpgrade('directional_shield', 'pathB', 'minor') && !e.isDummy) {
+        const cap = Math.max(0, this.gs?.dashMaxCharges || 0);
+        this.dash.charges = Math.min(cap, Math.max(0, (this.dash?.charges || 0) + 1));
+        this.registry.set('dashCharges', this.dash.charges);
       }
     } catch (_) {}
     try { if (e._igniteIndicator) { e._igniteIndicator.destroy(); e._igniteIndicator = null; } } catch (_) {}
@@ -4192,7 +4246,7 @@ export default class CombatScene extends Phaser.Scene {
         const w = getEffectiveWeapon(this.gs, this.gs.activeWeapon);
         firingSlow = (typeof w._firingMoveMult === 'number') ? w._firingMoveMult : 0.3;
       }
-      const speed = 200 * (eff.moveSpeedMult || 1) * this._getRepulseMeleeSpeedMult() * firingSlow;
+      const speed = 200 * (eff.moveSpeedMult || 1) * this._getRepulseMeleeSpeedMult() * this._getStealthDecoySpeedMult() * this._getDirectionalShieldSpeedMult() * firingSlow;
       (this.playerCollider || this.player).setVelocity(mv.x * speed, mv.y * speed);
     }
 
@@ -9370,8 +9424,13 @@ export default class CombatScene extends Phaser.Scene {
   getActiveReloadMs() {
     try {
       const w = getEffectiveWeapon(this.gs, this.gs.activeWeapon);
-      if (typeof w.reloadMs === 'number') return w.reloadMs;
-      return (w.projectile === 'rocket') ? 1000 : 1500;
+      let ms = (typeof w.reloadMs === 'number') ? w.reloadMs : ((w.projectile === 'rocket') ? 1000 : 1500);
+      // Directional Shield Path A (minor): reload is 50% faster for 2s after killing an enemy.
+      if ((this.gs?.abilityId === 'directional_shield') && this._hasAbilityUpgrade('directional_shield', 'pathA', 'minor')) {
+        const now = this.time?.now || 0;
+        if (now < (this._dirShieldReloadBuffUntil || 0)) ms = Math.max(1, Math.round(ms * 0.5));
+      }
+      return ms;
     } catch (_) {
       return 1500;
     }
