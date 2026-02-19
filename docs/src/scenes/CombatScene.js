@@ -669,6 +669,42 @@ export default class CombatScene extends Phaser.Scene {
     } catch (_) {}
   }
 
+  _hasAbilityUpgrade(abilityId, pathId, tier) {
+    try {
+      const gs = this.gs;
+      if (!gs || !gs.abilityUpgrades || typeof gs.abilityUpgrades !== 'object') return false;
+      const st = gs.abilityUpgrades[abilityId];
+      if (!st || st.selectedPath !== pathId) return false;
+      return !!(st[pathId] && st[pathId][tier]);
+    } catch (_) { return false; }
+  }
+
+  _applyAdsProjectileReduction(dmg) {
+    try {
+      let out = Math.max(0, Math.floor(dmg || 0));
+      // ADS Path A minor: -15% enemy projectile damage to player (while ADS is equipped).
+      if ((this.gs?.abilityId === 'ads') && this._hasAbilityUpgrade('ads', 'pathA', 'minor')) {
+        out = Math.max(1, Math.ceil(out * 0.85));
+      }
+      return out;
+    } catch (_) {
+      return Math.max(0, Math.floor(dmg || 0));
+    }
+  }
+
+  _applyAdsMeleeReduction(dmg) {
+    try {
+      let out = Math.max(0, Math.floor(dmg || 0));
+      // ADS Path B minor: -20% enemy melee damage to player (while ADS is equipped).
+      if ((this.gs?.abilityId === 'ads') && this._hasAbilityUpgrade('ads', 'pathB', 'minor')) {
+        out = Math.max(1, Math.ceil(out * 0.8));
+      }
+      return out;
+    } catch (_) {
+      return Math.max(0, Math.floor(dmg || 0));
+    }
+  }
+
   create() {
     const { width, height } = this.scale;
     // Fallback: if init() wasn't called with data, read from scene settings
@@ -1944,7 +1980,7 @@ export default class CombatScene extends Phaser.Scene {
       const ex = b.x; const ey = b.y; const radius = b._blastRadius || 70; const r2 = radius * radius;
         const pdx = this.player.x - ex; const pdy = this.player.y - ey;
         if ((pdx * pdx + pdy * pdy) <= r2 && !inIframes) {
-          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} this.applyPlayerDamage(dmg);
+          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyAdsProjectileReduction(dmg); this.applyPlayerDamage(dmg);
           // Short i-frames vs explosive rockets
           this.player.iframesUntil = this.time.now + 50;
           if (this.gs.hp <= 0) {
@@ -1968,7 +2004,7 @@ export default class CombatScene extends Phaser.Scene {
       const beforeHp = gs ? (gs.hp | 0) : 0;
       const beforeShield = gs ? Math.max(0, (gs.shield | 0)) : 0;
       if (!inIframes) {
-        const dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 8; // default shooter damage
+        const dmg = this._applyAdsProjectileReduction((typeof b.damage === 'number' && b.damage > 0) ? b.damage : 8); // default shooter damage
         this.applyPlayerDamage(dmg);
         // Short i-frames vs enemy bullets
         this.player.iframesUntil = this.time.now + 50;
@@ -2011,7 +2047,7 @@ export default class CombatScene extends Phaser.Scene {
         const ex = b.x; const ey = b.y; const radius = b._blastRadius || 70; const r2 = radius * radius;
         const pdx = this.player.x - ex; const pdy = this.player.y - ey;
         if ((pdx * pdx + pdy * pdy) <= r2 && !inIframes) {
-          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} this.applyPlayerDamage(dmg);
+          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyAdsProjectileReduction(dmg); this.applyPlayerDamage(dmg);
           // Short i-frames vs explosive rockets
           this.player.iframesUntil = this.time.now + 50;
           if (this.gs.hp <= 0) {
@@ -2031,7 +2067,7 @@ export default class CombatScene extends Phaser.Scene {
       const beforeHp = gs ? (gs.hp | 0) : 0;
       const beforeShield = gs ? Math.max(0, (gs.shield | 0)) : 0;
       if (!inIframes) {
-        const dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 8;
+        const dmg = this._applyAdsProjectileReduction((typeof b.damage === 'number' && b.damage > 0) ? b.damage : 8);
         this.applyPlayerDamage(dmg);
         // Short i-frames vs enemy bullets
         this.player.iframesUntil = this.time.now + 50;
@@ -4394,7 +4430,47 @@ export default class CombatScene extends Phaser.Scene {
     if (this._gadgets && this._gadgets.length) {
       const nowT = this.time.now;
       this._gadgets = this._gadgets.filter((g) => {
-        if (nowT >= (g.until || 0)) { try { g.g?.destroy(); } catch (_) {} return false; }
+        if (nowT >= (g.until || 0)) {
+          try { g.g?.destroy(); } catch (_) {}
+          try { g._slowG?.destroy?.(); } catch (_) {}
+          return false;
+        }
+        // ADS Path B major: visible 100px slow radius, and enemies inside are slowed by 50%.
+        try {
+          if (this._hasAbilityUpgrade('ads', 'pathB', 'major')) {
+            const slowR = 100;
+            const slowR2 = slowR * slowR;
+            if (!g._slowG || !g._slowG.active) {
+              const sg = this.add.graphics();
+              try { sg.setDepth(8990); } catch (_) {}
+              g._slowG = sg;
+            }
+            try {
+              const sg = g._slowG;
+              const pulse = ((nowT % 900) / 900);
+              const alpha = 0.16 + Math.sin(pulse * Math.PI * 2) * 0.03;
+              sg.clear();
+              sg.lineStyle(2, 0x66aaff, Math.max(0.08, alpha));
+              sg.strokeCircle(g.x, g.y, slowR);
+              sg.fillStyle(0x66aaff, 0.05);
+              sg.fillCircle(g.x, g.y, slowR);
+            } catch (_) {}
+            const enemies = this.enemies?.getChildren?.() || [];
+            for (let i = 0; i < enemies.length; i += 1) {
+              const e = enemies[i];
+              if (!e?.active) continue;
+              const dx = e.x - g.x;
+              const dy = e.y - g.y;
+              if ((dx * dx + dy * dy) <= slowR2) {
+                // Sliding window so slowdown naturally clears shortly after leaving radius.
+                e._adsSlowUntil = Math.max(e._adsSlowUntil || 0, nowT + 120);
+              }
+            }
+          } else if (g._slowG) {
+            try { g._slowG.destroy?.(); } catch (_) {}
+            g._slowG = null;
+          }
+        } catch (_) {}
         // Zap nearest enemy projectile within radius, at most 5/s
         if (nowT >= (g.nextZapAt || 0)) {
           const radius = g.radius || 120; const r2 = radius * radius;
@@ -4431,7 +4507,12 @@ export default class CombatScene extends Phaser.Scene {
               try { const ang = Phaser.Math.Angle.Between(sx, sy, best.x, best.y); pixelSparks(this, sx, sy, { angleRad: ang, count: 6, spreadDeg: 60, speedMin: 90, speedMax: 140, lifeMs: 110, color: 0x66aaff, size: 2, alpha: 0.9 }); } catch (_) {}
             } catch (_) {}
             try { best.destroy(); } catch (_) {}
-            g.nextZapAt = nowT + 100; // 10 per second
+            let zapMs = 100; // baseline
+            // ADS Path A major: +50% projectile intercept speed.
+            try {
+              if (this._hasAbilityUpgrade('ads', 'pathA', 'major')) zapMs = Math.max(1, Math.floor(zapMs * 0.5));
+            } catch (_) {}
+            g.nextZapAt = nowT + zapMs;
           }
         }
         return true;
@@ -6441,6 +6522,10 @@ export default class CombatScene extends Phaser.Scene {
         let speed = e.speed || 60;
         // Global speed boost for all enemies
         speed *= 1.5;
+        // ADS Path B major: enemies slowed by 50% while inside ADS slow aura.
+        try {
+          if (now < (e._adsSlowUntil || 0)) speed *= 0.5;
+        } catch (_) {}
         // Rook: update and draw shield; turn slowly toward player (30闂?s)
         if (e.isRook) {
           try {
@@ -6530,7 +6615,7 @@ export default class CombatScene extends Phaser.Scene {
                 const angP = Math.atan2(pdy, pdx);
                 const diff = Math.abs(Phaser.Math.Angle.Wrap(angP - (e._meleeFacing || 0)));
                 if (dd <= cfg.range && diff <= cfg.half && !e._meleeDidHit) {
-                  this.applyPlayerDamage((e.damage || 10));
+                  this.applyPlayerDamage(this._applyAdsMeleeReduction((e.damage || 10)));
                   // Short melee-specific i-frames so multiple melee hits don't stack instantly
                   this.player.iframesUntil = this.time.now + 75;
                   try { impactBurst(this, this.player.x, this.player.y, { color: 0xff3333, size: 'small' }); } catch (_) {}
@@ -6598,7 +6683,7 @@ export default class CombatScene extends Phaser.Scene {
                 const angP = Math.atan2(pdy, pdx);
                 const diff = Math.abs(Phaser.Math.Angle.Wrap(angP - (e._bmFacing || 0)));
                 if (dd <= cfg.range && diff <= cfg.half && !e._bmDidHit) {
-                  this.applyPlayerDamage((e.damage || 10));
+                  this.applyPlayerDamage(this._applyAdsMeleeReduction((e.damage || 10)));
                   this.player.iframesUntil = this.time.now + 75;
                   try { impactBurst(this, this.player.x, this.player.y, { color: 0xff3333, size: 'small' }); } catch (_) {}
                   e._bmDidHit = true;
@@ -10726,7 +10811,7 @@ export default class CombatScene extends Phaser.Scene {
         const angP = Math.atan2(pdy, pdx);
         const diff = Math.abs(Phaser.Math.Angle.Wrap(angP - facing));
         if (dd <= cfg.range && diff <= cfg.half) {
-          const dmg = (e.damage || 10);
+          const dmg = this._applyAdsMeleeReduction((e.damage || 10));
           if (this.time.now >= (this.player.iframesUntil || 0)) {
             try { this.applyPlayerDamage(dmg); } catch (_) {}
             // Same short melee-specific i-frames as standard boss melee

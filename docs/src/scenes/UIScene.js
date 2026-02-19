@@ -7,7 +7,7 @@ import { makeTextButton } from '../ui/Buttons.js';
 import { SaveManager } from '../core/SaveManager.js';
 import { getPlayerEffects } from '../core/Loadout.js';
 import { weaponMods, weaponCores, armourMods, armourDefs } from '../core/Mods.js';
-import { abilityDefs, getAbilityById } from '../core/Abilities.js';
+import { abilityDefs, getAbilityById, getAbilityUpgradeDef } from '../core/Abilities.js';
 import { weaponDefs, getWeaponById } from '../core/Weapons.js';
 import { bitSpawnRing } from '../systems/Effects.js';
 
@@ -136,6 +136,7 @@ export default class UIScene extends Phaser.Scene {
     this.loadout = { panel: null, nodes: [] };
     this.shop = { panel: null, nodes: [], activeCat: 'weapons' };
     this.choicePopup = null;
+    this.abilityUpgradePopup = null;
     this.keys = this.input.keyboard.addKeys({ tab: 'TAB' });
 
     this.events.on('shutdown', () => {
@@ -144,6 +145,7 @@ export default class UIScene extends Phaser.Scene {
       this.dashBar.destroy();
       this.closeLoadout();
       this.closeChoicePopup();
+      this.closeAbilityUpgradePopup();
       try { (this._resourceToasts || []).forEach((t) => t?.destroy?.()); this._resourceToasts = []; } catch (_) {}
       this._dashSlotLevels = [];
       // Cleanup any ability glow graphics
@@ -956,6 +958,10 @@ export default class UIScene extends Phaser.Scene {
       });
     }).setOrigin(0, 0.5);
     nodes.push(abilityLabel, abilityBtn); y3 += 36;
+    const upgradesBtn = makeTextButton(this, col3X + 210, y3 + 8, 'Upgrades', () => {
+      this.openAbilityUpgradePopup(gs.abilityId || 'ads');
+    }).setOrigin(0, 0.5);
+    nodes.push(upgradesBtn); y3 += 34;
 
     // Close hint
     nodes.push(this.add.text(width / 2, top + panelH + 30, 'Press Tab to close', { fontFamily: 'monospace', fontSize: 12, color: '#999999' }).setOrigin(0.5));
@@ -970,6 +976,7 @@ export default class UIScene extends Phaser.Scene {
     this.loadout.modLabels = [];
     this.loadout.coreLabel = null;
     this.closeChoicePopup();
+    this.closeAbilityUpgradePopup();
   }
 
   openShopOverlay() {
@@ -1425,6 +1432,171 @@ export default class UIScene extends Phaser.Scene {
         });
       } });
     } catch (_) {}
+  }
+
+  _ensureAbilityUpgradeState(gs, abilityId) {
+    if (!gs) return null;
+    if (!gs.abilityUpgrades || typeof gs.abilityUpgrades !== 'object') gs.abilityUpgrades = {};
+    if (!gs.abilityUpgrades[abilityId] || typeof gs.abilityUpgrades[abilityId] !== 'object') {
+      gs.abilityUpgrades[abilityId] = {
+        selectedPath: null,
+        pathA: { minor: false, major: false },
+        pathB: { minor: false, major: false },
+      };
+    }
+    const st = gs.abilityUpgrades[abilityId];
+    if (!st.pathA || typeof st.pathA !== 'object') st.pathA = { minor: false, major: false };
+    if (!st.pathB || typeof st.pathB !== 'object') st.pathB = { minor: false, major: false };
+    if (!('selectedPath' in st)) st.selectedPath = null;
+    st.pathA.minor = !!st.pathA.minor; st.pathA.major = !!st.pathA.major;
+    st.pathB.minor = !!st.pathB.minor; st.pathB.major = !!st.pathB.major;
+    if (st.selectedPath !== 'pathA' && st.selectedPath !== 'pathB') st.selectedPath = null;
+    return st;
+  }
+
+  _abilityUpgradeRefund(st) {
+    if (!st) return 0;
+    let total = 0;
+    if (st.pathA?.minor) total += 100;
+    if (st.pathA?.major) total += 150;
+    if (st.pathB?.minor) total += 100;
+    if (st.pathB?.major) total += 150;
+    return total;
+  }
+
+  openAbilityUpgradePopup(initialAbilityId = null) {
+    this.closeAbilityUpgradePopup();
+    const gs = this.registry.get('gameState');
+    if (!gs) return;
+    const owned = Array.isArray(gs.ownedAbilities) ? gs.ownedAbilities.slice() : ['ads'];
+    if (!owned.length) return;
+    let selectedId = owned.includes(initialAbilityId) ? initialAbilityId : owned[0];
+    const { width, height } = this.scale;
+
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.55).fillRect(0, 0, width, height);
+    overlay.setInteractive(new Phaser.Geom.Rectangle(0, 0, width, height), Phaser.Geom.Rectangle.Contains);
+
+    const panelW = Math.min(860, Math.max(620, width - 80));
+    const panelH = Math.min(560, Math.max(380, height - 80));
+    const left = Math.floor((width - panelW) / 2);
+    const top = Math.floor((height - panelH) / 2);
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1a1a1a, 0.96).fillRect(left, top, panelW, panelH);
+    panel.lineStyle(2, 0xffffff, 1).strokeRect(left, top, panelW, panelH);
+
+    const nodes = [];
+    nodes.push(this.add.text(left + panelW / 2, top + 14, 'Ability Upgrades', { fontFamily: 'monospace', fontSize: 18, color: '#ffffff' }).setOrigin(0.5, 0));
+    const closeBtn = makeTextButton(this, left + panelW - 14, top + 14, 'Close', () => this.closeAbilityUpgradePopup()).setOrigin(1, 0);
+    nodes.push(closeBtn);
+
+    const leftColX = left + 18;
+    const leftColW = 220;
+    const rightX = left + leftColW + 30;
+    const contentTop = top + 52;
+    let dynamicNodes = [];
+    const clearDynamic = () => { dynamicNodes.forEach((n) => { try { n?.destroy?.(); } catch (_) {} }); dynamicNodes = []; };
+    const addNode = (n) => { dynamicNodes.push(n); return n; };
+
+    const render = () => {
+      clearDynamic();
+      // Left list (owned abilities only)
+      addNode(this.add.text(leftColX, contentTop - 22, 'Owned Abilities', { fontFamily: 'monospace', fontSize: 14, color: '#cccccc' }).setOrigin(0, 0));
+      let ay = contentTop + 6;
+      owned.forEach((id) => {
+        const a = getAbilityById(id);
+        const isSel = id === selectedId;
+        const b = makeTextButton(this, leftColX + 4, ay, `${a?.name || id}${isSel ? ' [Selected]' : ''}`, () => { selectedId = id; render(); }).setOrigin(0, 0);
+        try { b.setStyle({ color: isSel ? '#ffff66' : '#ffffff' }); } catch (_) {}
+        addNode(b); ay += 30;
+      });
+
+      const ab = getAbilityById(selectedId);
+      const def = getAbilityUpgradeDef(selectedId);
+      const st = this._ensureAbilityUpgradeState(gs, selectedId);
+      const selectedPath = st?.selectedPath || null;
+
+      addNode(this.add.text(rightX, contentTop - 22, `${ab?.name || selectedId} - Upgrade Paths`, { fontFamily: 'monospace', fontSize: 14, color: '#cccccc' }).setOrigin(0, 0));
+      addNode(this.add.text(rightX, contentTop + 2, `Gold: ${gs.gold | 0}`, { fontFamily: 'monospace', fontSize: 13, color: '#ffff66' }).setOrigin(0, 0));
+
+      const drawPath = (pathId, x, y) => {
+        const isLocked = !!selectedPath && selectedPath !== pathId;
+        const pDef = def?.[pathId] || getAbilityUpgradeDef(selectedId)?.[pathId];
+        const pSt = st?.[pathId] || { minor: false, major: false };
+        const card = this.add.graphics();
+        card.fillStyle(0x111111, 0.95).fillRect(x, y, 270, 230);
+        card.lineStyle(1, isLocked ? 0x666666 : 0xffffff, 1).strokeRect(x, y, 270, 230);
+        addNode(card);
+        addNode(this.add.text(x + 10, y + 10, `${pDef?.name || pathId}${isLocked ? ' (Locked)' : ''}`, { fontFamily: 'monospace', fontSize: 14, color: isLocked ? '#888888' : '#ffffff' }).setOrigin(0, 0));
+
+        const minorOwned = !!pSt.minor;
+        const majorOwned = !!pSt.major;
+        const canMinor = !minorOwned && !isLocked;
+        const canMajor = !majorOwned && !isLocked && minorOwned;
+
+        addNode(this.add.text(x + 10, y + 40, `Minor: ${pDef?.minor?.name || 'Minor'}`, { fontFamily: 'monospace', fontSize: 13, color: '#66ff66' }).setOrigin(0, 0));
+        addNode(this.add.text(x + 10, y + 58, `${pDef?.minor?.desc || ''}`, { fontFamily: 'monospace', fontSize: 12, color: '#cccccc', wordWrap: { width: 250, useAdvancedWrap: true } }).setOrigin(0, 0));
+        const minorLabel = minorOwned ? 'Minor Owned' : (canMinor ? 'Buy Minor (100g)' : (isLocked ? 'Minor Locked' : 'Minor Unavailable'));
+        const bMinor = makeTextButton(this, x + 10, y + 112, minorLabel, () => {
+          if (!canMinor) return;
+          if ((gs.gold || 0) < 100) return;
+          gs.gold -= 100;
+          const st2 = this._ensureAbilityUpgradeState(gs, selectedId);
+          st2.selectedPath = pathId;
+          st2[pathId].minor = true;
+          SaveManager.saveToLocal(gs);
+          render();
+        }).setOrigin(0, 0);
+        if (!canMinor) bMinor.disableInteractive();
+        addNode(bMinor);
+
+        addNode(this.add.text(x + 10, y + 148, `Major: ${pDef?.major?.name || 'Major'}`, { fontFamily: 'monospace', fontSize: 13, color: '#66aaff' }).setOrigin(0, 0));
+        addNode(this.add.text(x + 10, y + 166, `${pDef?.major?.desc || ''}`, { fontFamily: 'monospace', fontSize: 12, color: '#cccccc', wordWrap: { width: 250, useAdvancedWrap: true } }).setOrigin(0, 0));
+        const majorLabel = majorOwned ? 'Major Owned' : (canMajor ? 'Buy Major (150g)' : (isLocked ? 'Major Locked' : 'Major Needs Minor'));
+        const bMajor = makeTextButton(this, x + 10, y + 200, majorLabel, () => {
+          if (!canMajor) return;
+          if ((gs.gold || 0) < 150) return;
+          gs.gold -= 150;
+          const st2 = this._ensureAbilityUpgradeState(gs, selectedId);
+          st2.selectedPath = pathId;
+          st2[pathId].major = true;
+          SaveManager.saveToLocal(gs);
+          render();
+        }).setOrigin(0, 0);
+        if (!canMajor) bMajor.disableInteractive();
+        addNode(bMajor);
+      };
+
+      drawPath('pathA', rightX, contentTop + 28);
+      drawPath('pathB', rightX + 290, contentTop + 28);
+
+      const refund = this._abilityUpgradeRefund(st);
+      const resetLabel = refund > 0 ? `Reset Path (Refund ${refund}g)` : 'Reset Path';
+      const resetBtn = makeTextButton(this, rightX, contentTop + 270, resetLabel, () => {
+        if (refund <= 0) return;
+        gs.gold = (gs.gold || 0) + refund;
+        const st2 = this._ensureAbilityUpgradeState(gs, selectedId);
+        st2.selectedPath = null;
+        st2.pathA = { minor: false, major: false };
+        st2.pathB = { minor: false, major: false };
+        SaveManager.saveToLocal(gs);
+        render();
+      }).setOrigin(0, 0);
+      if (refund <= 0) resetBtn.disableInteractive();
+      addNode(resetBtn);
+    };
+
+    render();
+    this.abilityUpgradePopup = { overlay, panel, nodes, dynamicNodesRef: () => dynamicNodes };
+  }
+
+  closeAbilityUpgradePopup() {
+    if (!this.abilityUpgradePopup) return;
+    try { (this.abilityUpgradePopup.dynamicNodesRef?.() || []).forEach((n) => n?.destroy?.()); } catch (_) {}
+    try { this.abilityUpgradePopup.overlay?.destroy?.(); } catch (_) {}
+    try { this.abilityUpgradePopup.panel?.destroy?.(); } catch (_) {}
+    try { (this.abilityUpgradePopup.nodes || []).forEach((n) => n?.destroy?.()); } catch (_) {}
+    this.abilityUpgradePopup = null;
   }
 
   // Helper to refresh the loadout overlay without the user having to toggle Tab

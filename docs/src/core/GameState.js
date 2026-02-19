@@ -77,6 +77,9 @@ export class GameState {
     this.abilityId = 'ads';
     // Owned abilities for shop gating (default: ADS)
     this.ownedAbilities = ['ads'];
+    // Ability upgrades by abilityId:
+    // { [id]: { selectedPath: null|'pathA'|'pathB', pathA: { minor, major }, pathB: { minor, major } } }
+    this.abilityUpgrades = {};
     // Dash settings
     this.dashMaxCharges = 3;
     this.dashRegenMs = 6000;
@@ -119,6 +122,7 @@ export class GameState {
     this.lastBossType = null;
     this.abilityId = 'ads';
     this.ownedAbilities = ['ads'];
+    this.abilityUpgrades = {};
     this.dashMaxCharges = 3;
     this.dashRegenMs = 6000;
   }
@@ -287,6 +291,7 @@ export class GameState {
       lastBossType: this.lastBossType,
       abilityId: this.abilityId,
       ownedAbilities: this.ownedAbilities,
+      abilityUpgrades: this.abilityUpgrades,
       dashMaxCharges: this.dashMaxCharges,
       dashRegenMs: this.dashRegenMs,
     };
@@ -330,6 +335,7 @@ export class GameState {
     // Ensure ability ownership defaults and consistency
     if (!Array.isArray(gs.ownedAbilities)) gs.ownedAbilities = ['ads'];
     if (!gs.ownedAbilities.includes('ads')) gs.ownedAbilities.push('ads');
+    if (!gs.abilityUpgrades || typeof gs.abilityUpgrades !== 'object') gs.abilityUpgrades = {};
     // If equipped ability is not owned, fall back to ADS
     if (!gs.ownedAbilities.includes(gs.abilityId)) gs.abilityId = 'ads';
     // Ensure shield defaults

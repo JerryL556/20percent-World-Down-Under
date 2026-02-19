@@ -65,12 +65,71 @@ export const abilityDefs = [
     id: 'energy_siphon',
     name: 'Energy Siphon',
     desc: [
-      'For 5s, convert 25% of damage you deal into shield.',
+      'For 8s, convert 25% of damage you deal into shield.',
       'Also heal 5 HP whenever an enemy dies during the effect.',
-      'Cooldown: 12s.',
+      'Cooldown: 14s.',
     ].join('\n'),
   },
 ];
+
+// Placeholder upgrade definitions. You can replace names/descriptions/effects later.
+// Each ability has two paths and each path has a minor + major tier.
+export const abilityUpgradeDefs = Object.freeze({
+  ads: {
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Projectile Dampening', desc: 'Reduce enemy projectile damage to player by 15%.' },
+      major: { name: 'Overclocked Intercept', desc: 'ADS destroys enemy projectiles 50% faster.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Brace Impact', desc: 'Reduce enemy melee damage to player by 20%.' },
+      major: { name: 'Gravity Well', desc: 'ADS slows enemies by 50% within a visible 100px radius.' },
+    },
+  },
+  bits: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  repulse: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  caustic_cluster: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  landmine_dispenser: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  stealth_decoy: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  directional_shield: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  vulcan_turret: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+  energy_siphon: {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  },
+});
+
+export function getAbilityUpgradeDef(id) {
+  const def = abilityUpgradeDefs[id];
+  if (def) return def;
+  // Generic fallback so newly added abilities remain upgradeable before defs are authored.
+  return {
+    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
+    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+  };
+}
 
 export function getAbilityById(id) {
   return abilityDefs.find((a) => a.id === id) || abilityDefs[0];
