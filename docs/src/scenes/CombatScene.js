@@ -9248,7 +9248,7 @@ export default class CombatScene extends Phaser.Scene {
     }
   }
 
-  _spawnSiphonPacket(x, y, color = 0x66ccff, size = 2, speed = 320) {
+  _spawnSiphonPacket(x, y, color = 0x66ccff, size = 2, speed = 520) {
     try {
       if (!this._siphonPackets) this._siphonPackets = [];
       const g = this.add.rectangle(x, y, Math.max(1, size), Math.max(1, size), color, 0.95);
@@ -9271,7 +9271,7 @@ export default class CombatScene extends Phaser.Scene {
         const r = Phaser.Math.FloatBetween(0, spread);
         const sx = fromX + Math.cos(a) * r;
         const sy = fromY + Math.sin(a) * r;
-        const spd = isKill ? Phaser.Math.Between(260, 420) : Phaser.Math.Between(240, 360);
+        const spd = isKill ? Phaser.Math.Between(520, 760) : Phaser.Math.Between(460, 680);
         this._spawnSiphonPacket(sx, sy, col, size, spd);
       }
       // tiny matching burst at source to make siphon event readable
