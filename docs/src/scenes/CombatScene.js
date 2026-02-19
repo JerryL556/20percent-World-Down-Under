@@ -49,7 +49,7 @@ export default class CombatScene extends Phaser.Scene {
       if (!this._isBossRoom) return;
       if (mode !== 'Normal' && mode !== 'BossRush') return;
       try { this.sound.stopByKey('bgm_boss'); } catch (_) {}
-      const music = this.sound.add('bgm_boss', { loop: true, volume: 0.7 });
+      const music = this.sound.add('bgm_boss', { loop: true, volume: this._getBgmVolume('boss', 0.7) });
       this._bossBgm = music;
       music.play();
     } catch (_) {}
@@ -69,7 +69,7 @@ export default class CombatScene extends Phaser.Scene {
       const existing = this.sound.get('bgm_campaign');
       if (existing?.isPlaying) return; // keep playing across normal-room transitions
       try { this.sound.stopByKey('bgm_campaign'); } catch (_) {}
-      const music = this.sound.add('bgm_campaign', { loop: true, volume: 0.7 });
+      const music = this.sound.add('bgm_campaign', { loop: true, volume: this._getBgmVolume('campaign', 0.7) });
       this._campaignBgm = music;
       music.play();
     } catch (_) {}
@@ -87,7 +87,7 @@ export default class CombatScene extends Phaser.Scene {
       const existing = this.sound.get('bgm_hub');
       if (existing?.isPlaying) return;
       try { this.sound.stopByKey('bgm_hub'); } catch (_) {}
-      const music = this.sound.add('bgm_hub', { loop: true, volume: 0.7 });
+      const music = this.sound.add('bgm_hub', { loop: true, volume: this._getBgmVolume('hub', 0.7) });
       this._hubBgm = music;
       music.play();
     } catch (_) {}
@@ -105,7 +105,7 @@ export default class CombatScene extends Phaser.Scene {
       const existing = this.sound.get('bgm_infinite');
       if (existing?.isPlaying) return; // keep across same-mode room transitions
       try { this.sound.stopByKey('bgm_infinite'); } catch (_) {}
-      const music = this.sound.add('bgm_infinite', { loop: true, volume: 0.7 });
+      const music = this.sound.add('bgm_infinite', { loop: true, volume: this._getBgmVolume('infinite', 0.7) });
       this._infiniteBgm = music;
       music.play();
     } catch (_) {}
@@ -116,6 +116,16 @@ export default class CombatScene extends Phaser.Scene {
     try { this._infiniteBgm?.destroy?.(); } catch (_) {}
     this._infiniteBgm = null;
     try { this.sound.stopByKey('bgm_infinite'); } catch (_) {}
+  }
+
+  _getBgmVolume(trackId, fallback = 0.7) {
+    try {
+      const av = (this.gs && this.gs.audioVolumes) ? this.gs.audioVolumes : {};
+      const clamp01 = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? Math.max(0, Math.min(1, v)) : d;
+      return clamp01(av.master, 1) * clamp01(av[trackId], fallback);
+    } catch (_) {
+      return fallback;
+    }
   }
 
   _syncCombatBgm() {

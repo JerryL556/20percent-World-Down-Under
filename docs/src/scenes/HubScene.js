@@ -105,20 +105,23 @@ export default class HubScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
+    this.gs = this.registry.get('gameState');
     // Hub/Training BGM: restart from beginning whenever player returns to Hub.
     try {
       try { this.sound.stopByKey('bgm_boss'); } catch (_) {}
       try { this.sound.stopByKey('bgm_campaign'); } catch (_) {}
       try { this.sound.stopByKey('bgm_hub'); } catch (_) {}
       try { this.sound.stopByKey('bgm_infinite'); } catch (_) {}
-      const hubBgm = this.sound.add('bgm_hub', { loop: true, volume: 0.7 });
+      const av = (this.gs && this.gs.audioVolumes) ? this.gs.audioVolumes : {};
+      const clamp01 = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? Math.max(0, Math.min(1, v)) : d;
+      const v = clamp01(av.master, 1) * clamp01(av.hub, 0.7);
+      const hubBgm = this.sound.add('bgm_hub', { loop: true, volume: v });
       hubBgm.play();
     } catch (_) {}
     // Launch UI overlay for gameplay scenes
     this.scene.launch(SceneKeys.UI);
     // Ensure boss HUD is hidden when entering Hub
     try { this.registry.set('bossActive', false); this.registry.set('bossName', ''); this.registry.set('bossHp', 0); this.registry.set('bossHpMax', 0); this.registry.set('cinematicActive', false); } catch (_) {}
-    this.gs = this.registry.get('gameState');
     this.inputMgr = new InputManager(this);
     // Deep Dive indicator in Hub when DeepDive mode is selected (mirror CombatScene behavior with retries)
     try {

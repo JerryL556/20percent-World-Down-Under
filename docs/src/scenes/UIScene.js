@@ -4,6 +4,7 @@ import { ShieldBar } from '../ui/ShieldBar.js';
 import { DashBar } from '../ui/DashBar.js';
 import { HeatBar } from '../ui/HeatBar.js';
 import { makeTextButton } from '../ui/Buttons.js';
+import { drawPanel } from '../ui/Panels.js';
 import { SaveManager } from '../core/SaveManager.js';
 import { getPlayerEffects } from '../core/Loadout.js';
 import { weaponMods, weaponCores, armourMods, armourDefs } from '../core/Mods.js';
@@ -87,7 +88,7 @@ export default class UIScene extends Phaser.Scene {
     this.loadoutHint = this.add.text(12, 12, 'Loadout (TAB)', { fontFamily: 'monospace', fontSize: 12, color: '#cccccc' }).setOrigin(0, 0).setAlpha(0.9);
     
 
-    const saveBaseX = width - 240;
+    const saveBaseX = width - 350;
     this._saveButtons = [];
     const registerSaveButton = (label, handler, offset) => {
       const btn = makeTextButton(this, saveBaseX + offset, 16, label, handler).setOrigin(0, 0);
@@ -102,19 +103,24 @@ export default class UIScene extends Phaser.Scene {
     registerSaveButton('Download', () => {
       const gs = this.registry.get('gameState');
       if (gs) SaveManager.download(gs);
-    }, 70);
+    }, 80);
     registerSaveButton('Load', async () => {
       const gs = await SaveManager.uploadFromFile();
       if (gs) {
         this.registry.set('gameState', gs);
         SaveManager.saveToLocal(gs);
+        try { this._applyBgmVolumes(); } catch (_) {}
         // If we're in the Hub, refresh its view of GameState and Hub labels
         try {
           const hub = this.scene.get(SceneKeys.Hub);
           if (hub && typeof hub.refreshFromGameState === 'function') hub.refreshFromGameState();
         } catch (_) {}
       }
-    }, 170);
+    }, 180);
+    registerSaveButton('Volume', () => {
+      if (this._volumePanel?.panel) this.closeVolumePanel();
+      else this.openVolumePanel();
+    }, 260);
     this._saveButtonsVisible = null;
     this._refreshSaveButtons = () => {
       const shouldShow = this.scene.isActive(SceneKeys.Hub);
@@ -128,6 +134,7 @@ export default class UIScene extends Phaser.Scene {
           if (btn.buttonFrame) btn.buttonFrame.setVisible(shouldShow);
         }
       });
+      if (!shouldShow) this.closeVolumePanel();
     };
     this._refreshSaveButtons();
     this.events.on('update', this._refreshSaveButtons);
@@ -137,6 +144,7 @@ export default class UIScene extends Phaser.Scene {
     this.shop = { panel: null, nodes: [], activeCat: 'weapons' };
     this.choicePopup = null;
     this.abilityUpgradePopup = null;
+    this._volumePanel = null;
     this.keys = this.input.keyboard.addKeys({ tab: 'TAB' });
 
     this.events.on('shutdown', () => {
@@ -155,7 +163,157 @@ export default class UIScene extends Phaser.Scene {
         this.events.off('update', this._refreshSaveButtons);
         this._refreshSaveButtons = null;
       }
+      this.closeVolumePanel();
     });
+  }
+
+  _ensureAudioVolumes(gs) {
+    if (!gs) return { master: 1, hub: 0.7, campaign: 0.7, boss: 0.7, infinite: 0.7 };
+    if (!gs.audioVolumes || typeof gs.audioVolumes !== 'object') {
+      gs.audioVolumes = { master: 1, hub: 0.7, campaign: 0.7, boss: 0.7, infinite: 0.7 };
+    }
+    const clamp01 = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? Math.max(0, Math.min(1, v)) : d;
+    gs.audioVolumes.master = clamp01(gs.audioVolumes.master, 1);
+    gs.audioVolumes.hub = clamp01(gs.audioVolumes.hub, 0.7);
+    gs.audioVolumes.campaign = clamp01(gs.audioVolumes.campaign, 0.7);
+    gs.audioVolumes.boss = clamp01(gs.audioVolumes.boss, 0.7);
+    gs.audioVolumes.infinite = clamp01(gs.audioVolumes.infinite, 0.7);
+    return gs.audioVolumes;
+  }
+
+  _applyBgmVolumes() {
+    try {
+      const gs = this.registry.get('gameState');
+      const av = this._ensureAudioVolumes(gs);
+      const master = av.master;
+      const map = [
+        { key: 'bgm_hub', id: 'hub' },
+        { key: 'bgm_campaign', id: 'campaign' },
+        { key: 'bgm_boss', id: 'boss' },
+        { key: 'bgm_infinite', id: 'infinite' },
+      ];
+      for (let i = 0; i < map.length; i += 1) {
+        const m = map[i];
+        const snd = this.sound.get(m.key);
+        if (snd) snd.setVolume(master * (av[m.id] || 0));
+      }
+    } catch (_) {}
+  }
+
+  _volumeBarText(value) {
+    const v = Math.max(0, Math.min(1, value || 0));
+    const width = 20;
+    const fill = Math.round(v * width);
+    return `[${'#'.repeat(fill)}${'-'.repeat(width - fill)}] ${Math.round(v * 100)}%`;
+  }
+
+  _spawnVolumeTapFx(textureKey, x, y, targetH = 28) {
+    try {
+      if (!this.textures?.exists?.(textureKey)) return;
+      const img = this.add.image(x, y, textureKey);
+      try { img.setDepth(12000); } catch (_) {}
+      try {
+        const src = img.texture?.getSourceImage?.();
+        const h = (src && (src.naturalHeight || src.height)) || img.height || 1;
+        if (h > 0) img.setScale(targetH / h);
+      } catch (_) {}
+      img.setAlpha(0.95);
+      this.tweens.add({
+        targets: img,
+        alpha: 0,
+        y: y - 6,
+        duration: 220,
+        ease: 'Quad.easeOut',
+        onComplete: () => { try { img.destroy(); } catch (_) {} },
+      });
+    } catch (_) {}
+  }
+
+  openVolumePanel() {
+    if (this._volumePanel?.panel) return;
+    if (!this.scene.isActive(SceneKeys.Hub)) return;
+    const gs = this.registry.get('gameState');
+    const av = this._ensureAudioVolumes(gs);
+    const { width } = this.scale;
+    const panelW = 520; const panelH = 300; const panelX = width / 2 - panelW / 2; const panelY = 90;
+    const panel = drawPanel(this, panelX, panelY, panelW, panelH);
+    const nodes = [];
+    const title = this.add.text(width / 2, panelY + 20, 'Volume', { fontFamily: 'monospace', fontSize: 18, color: '#ffffff' }).setOrigin(0.5);
+    nodes.push(title);
+
+    const tracks = [
+      { id: 'master', label: 'Master' },
+      { id: 'hub', label: 'Hub Music' },
+      { id: 'campaign', label: 'Campaign Music' },
+      { id: 'boss', label: 'Boss Music' },
+      { id: 'infinite', label: 'Infinite Music' },
+    ];
+    let selected = 'master';
+
+    const labelNodes = [];
+    const barNodes = [];
+    const startY = panelY + 56;
+    const rowH = 34;
+    const labelX = panelX + 24;
+    const barX = panelX + 190;
+
+    const refresh = () => {
+      const cur = this._ensureAudioVolumes(this.registry.get('gameState'));
+      for (let i = 0; i < tracks.length; i += 1) {
+        const t = tracks[i];
+        const isSel = t.id === selected;
+        const lbl = labelNodes[i];
+        const bar = barNodes[i];
+        if (lbl) lbl.setStyle({ color: isSel ? '#ffff66' : '#ffffff' });
+        if (bar) bar.setText(this._volumeBarText(cur[t.id]));
+      }
+      try { SaveManager.saveToLocal(this.registry.get('gameState')); } catch (_) {}
+      this._applyBgmVolumes();
+    };
+
+    for (let i = 0; i < tracks.length; i += 1) {
+      const t = tracks[i];
+      const y = startY + i * rowH;
+      const lbl = this.add.text(labelX, y, t.label, { fontFamily: 'monospace', fontSize: 14, color: '#ffffff' })
+        .setOrigin(0, 0.5)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => { selected = t.id; refresh(); });
+      const bar = this.add.text(barX, y, this._volumeBarText(av[t.id]), { fontFamily: 'monospace', fontSize: 14, color: '#cccccc' }).setOrigin(0, 0.5);
+      labelNodes.push(lbl); barNodes.push(bar);
+      nodes.push(lbl, bar);
+    }
+
+    const adjust = (delta) => {
+      const gsNow = this.registry.get('gameState');
+      const cur = this._ensureAudioVolumes(gsNow);
+      cur[selected] = Math.max(0, Math.min(1, (cur[selected] || 0) + delta));
+      refresh();
+    };
+
+    const minusX = width / 2 - 50;
+    const plusX = width / 2 + 50;
+    const btnY = panelY + panelH - 44;
+    const minus = makeTextButton(this, minusX, btnY, '-', () => {
+      adjust(-0.05);
+      this._spawnVolumeTapFx('volume_down_fx', minusX - 34, btnY, 32);
+    });
+    const plus = makeTextButton(this, plusX, btnY, '+', () => {
+      adjust(+0.05);
+      this._spawnVolumeTapFx('volume_up_fx', plusX + 40, btnY, 28);
+    });
+    const close = makeTextButton(this, width / 2, panelY + panelH - 16, 'Close', () => this.closeVolumePanel());
+    nodes.push(minus, plus, close);
+
+    this._volumePanel = { panel, nodes };
+    refresh();
+  }
+
+  closeVolumePanel() {
+    const vp = this._volumePanel;
+    if (!vp) return;
+    try { vp.panel?.destroy?.(); } catch (_) {}
+    try { (vp.nodes || []).forEach((n) => n?.destroy?.()); } catch (_) {}
+    this._volumePanel = null;
   }
 
   // Show a brief red vignette when the player takes HP damage (not just shield)

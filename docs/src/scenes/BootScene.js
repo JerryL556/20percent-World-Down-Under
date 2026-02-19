@@ -61,6 +61,8 @@ export default class BootScene extends Phaser.Scene {
       if (!this.cache.audio.exists('bgm_campaign')) this.load.audio('bgm_campaign', 'assets/AUDIO/CAMPAIGN.mp3');
       if (!this.cache.audio.exists('bgm_hub')) this.load.audio('bgm_hub', 'assets/AUDIO/HUB.mp3');
       if (!this.cache.audio.exists('bgm_infinite')) this.load.audio('bgm_infinite', 'assets/AUDIO/INFINITE.mp3');
+      if (!this.textures.exists('volume_up_fx')) this.load.image('volume_up_fx', 'assets/AUDIO/Up.png');
+      if (!this.textures.exists('volume_down_fx')) this.load.image('volume_down_fx', 'assets/AUDIO/Down.png');
     } catch (_) {}
     // Generate simple textures used by bullets and optional sprites
     const g = this.make.graphics({ x: 0, y: 0, add: false });
