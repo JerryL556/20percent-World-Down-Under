@@ -88,20 +88,52 @@ export const abilityUpgradeDefs = Object.freeze({
     },
   },
   bits: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Thermal Buffer', desc: 'Reduce heat buildup by 15% for laser beam and laser DMR.' },
+      major: { name: 'Sparse Swarm', desc: 'Summon 4 BITs instead of 6, but BIT duration is doubled.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Rapid Vent', desc: 'Laser overheat cooldown is 40% faster.' },
+      major: { name: 'Dense Swarm', desc: 'Summon 9 BITs (no cooldown or duration change).' },
+    },
   },
   repulse: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Kinetic Step', desc: 'After taking enemy melee damage, gain +25% player speed for 1s.' },
+      major: { name: 'Extended Impulse', desc: 'Repulsion Pulse keeps enemies pushed for longer.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Counterforce', desc: 'Enemies that hit you with melee take 10 damage.' },
+      major: { name: 'Crushing Wave', desc: 'Repulsion Pulse hit damage increases to 15.' },
+    },
   },
   caustic_cluster: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Toxic Potency', desc: 'Toxin effect is stronger: +25% duration and +50% enemy spread disruption.' },
+      major: { name: 'Expanded Payload', desc: 'Caustic Cluster explosions gain +15px radius each.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Corrosive Overload', desc: 'Increase toxin damage by 100%.' },
+      major: { name: 'Volatile Charge', desc: 'Increase the explosion damage of the main Caustic grenade.' },
+    },
   },
   landmine_dispenser: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Blast Padding', desc: 'Reduce explosive damage from enemies by 20%.' },
+      major: { name: 'Echo Concussion', desc: 'Landmine Dispenser mines apply two extra +10 stun pulses at +1s and +2s (three total stuns).' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Demo Payload', desc: 'Increase all player explosion damage by 20%.' },
+      major: { name: 'Scorched Ground', desc: 'Landmine explosions leave an MGL-style fire field (same damage, VFX, and radius).' },
+    },
   },
   stealth_decoy: {
     pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
@@ -112,12 +144,28 @@ export const abilityUpgradeDefs = Object.freeze({
     pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
   },
   vulcan_turret: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Combat Harvest', desc: 'Heal 1 HP whenever you kill an enemy.' },
+      major: { name: 'Servo Overdrive', desc: 'Vulcan Turret max rotation speed increases by 50%.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Reserve Cycling', desc: 'Inactive equipped weapon auto-reloads after 5 seconds.' },
+      major: { name: 'Heavy Caliber', desc: 'Vulcan Turret bullets deal +1 damage.' },
+    },
   },
   energy_siphon: {
-    pathA: { name: 'Path A', minor: { name: 'Minor A', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major A', desc: 'Placeholder passive (ability-focused).' } },
-    pathB: { name: 'Path B', minor: { name: 'Minor B', desc: 'Placeholder passive (player-focused).' }, major: { name: 'Major B', desc: 'Placeholder passive (ability-focused).' } },
+    pathA: {
+      name: 'Path A',
+      minor: { name: 'Shield Drip', desc: 'Gain 3 shield HP whenever you kill an enemy.' },
+      major: { name: 'Overcharged Barrier', desc: 'During Energy Siphon, shield can overflow beyond max; overflow decays by 5 per second.' },
+    },
+    pathB: {
+      name: 'Path B',
+      minor: { name: 'Rapid Recharge', desc: 'Shield regeneration starts faster.' },
+      major: { name: 'Extended Siphon', desc: 'Energy Siphon duration increases by 3s.' },
+    },
   },
 });
 

@@ -705,6 +705,168 @@ export default class CombatScene extends Phaser.Scene {
     }
   }
 
+  _applyLandmineExplosiveReduction(dmg) {
+    try {
+      let out = Math.max(0, Math.floor(dmg || 0));
+      // Landmine Dispenser Path A minor: -20% enemy explosive damage to player (while equipped).
+      if ((this.gs?.abilityId === 'landmine_dispenser') && this._hasAbilityUpgrade('landmine_dispenser', 'pathA', 'minor')) {
+        out = Math.max(1, Math.ceil(out * 0.8));
+      }
+      return out;
+    } catch (_) {
+      return Math.max(0, Math.floor(dmg || 0));
+    }
+  }
+
+  _applyLandmineExplosionDamageBoost(dmg) {
+    try {
+      let out = Math.max(0, Math.floor(dmg || 0));
+      // Landmine Dispenser Path B minor: +20% all player explosion damage (while equipped).
+      if ((this.gs?.abilityId === 'landmine_dispenser') && this._hasAbilityUpgrade('landmine_dispenser', 'pathB', 'minor')) {
+        out = Math.max(1, Math.ceil(out * 1.2));
+      }
+      return out;
+    } catch (_) {
+      return Math.max(0, Math.floor(dmg || 0));
+    }
+  }
+
+  _applyCausticToxinDurationMs(baseMs) {
+    try {
+      const base = Math.max(1, Math.floor(baseMs || 0));
+      // Caustic Cluster Path A minor: toxin duration +25% (while equipped).
+      if ((this.gs?.abilityId === 'caustic_cluster') && this._hasAbilityUpgrade('caustic_cluster', 'pathA', 'minor')) {
+        return Math.max(1, Math.ceil(base * 1.25));
+      }
+      return base;
+    } catch (_) {
+      return Math.max(1, Math.floor(baseMs || 1));
+    }
+  }
+
+  _applyCausticToxinSpreadDeg(baseDeg) {
+    try {
+      const base = Math.max(0, Number(baseDeg) || 0);
+      // Caustic Cluster Path A minor: toxin spread disruption +50% (while equipped).
+      if ((this.gs?.abilityId === 'caustic_cluster') && this._hasAbilityUpgrade('caustic_cluster', 'pathA', 'minor')) {
+        return base * 1.5;
+      }
+      return base;
+    } catch (_) {
+      return Math.max(0, Number(baseDeg) || 0);
+    }
+  }
+
+  _applyCausticExplosionRadius(baseRadius) {
+    try {
+      const base = Math.max(1, Math.floor(baseRadius || 0));
+      // Caustic Cluster Path A major: +15px radius per explosion (while equipped).
+      if ((this.gs?.abilityId === 'caustic_cluster') && this._hasAbilityUpgrade('caustic_cluster', 'pathA', 'major')) {
+        return base + 15;
+      }
+      return base;
+    } catch (_) {
+      return Math.max(1, Math.floor(baseRadius || 1));
+    }
+  }
+
+  _applyCausticToxinDps(baseDps) {
+    try {
+      const base = Math.max(0, Number(baseDps) || 0);
+      // Caustic Cluster Path B minor: toxin damage +100% (while equipped).
+      if ((this.gs?.abilityId === 'caustic_cluster') && this._hasAbilityUpgrade('caustic_cluster', 'pathB', 'minor')) {
+        return base * 2;
+      }
+      return base;
+    } catch (_) {
+      return Math.max(0, Number(baseDps) || 0);
+    }
+  }
+
+  _applyCausticPrimaryExplosionDamage(baseDmg) {
+    try {
+      const base = Math.max(0, Math.floor(baseDmg || 0));
+      // Caustic Cluster Path B major: increase main grenade explosion damage (while equipped).
+      if ((this.gs?.abilityId === 'caustic_cluster') && this._hasAbilityUpgrade('caustic_cluster', 'pathB', 'major')) {
+        return Math.max(1, Math.ceil(base * 2));
+      }
+      return base;
+    } catch (_) {
+      return Math.max(0, Math.floor(baseDmg || 0));
+    }
+  }
+
+  _getRepulseMeleeSpeedMult() {
+    try {
+      const now = this.time.now;
+      const active = now < (this._repulseMeleeSpeedUntil || 0);
+      return active ? 1.25 : 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  _getRepulsePushDurationMs() {
+    try {
+      // Repulse Path A major: longer push duration.
+      if ((this.gs?.abilityId === 'repulse') && this._hasAbilityUpgrade('repulse', 'pathA', 'major')) return 1500;
+      return 1000;
+    } catch (_) {
+      return 1000;
+    }
+  }
+
+  _getRepulsePulseHitDamage() {
+    try {
+      // Repulse Path B major: pulse hit damage becomes 15.
+      if ((this.gs?.abilityId === 'repulse') && this._hasAbilityUpgrade('repulse', 'pathB', 'major')) return 15;
+      return 5;
+    } catch (_) {
+      return 5;
+    }
+  }
+
+  _applyEnemyMeleeDamageToPlayer(rawDmg, sourceEnemy = null) {
+    try {
+      // Repulse Path A minor: +25% player speed for 1s after taking enemy melee damage.
+      if ((this.gs?.abilityId === 'repulse') && this._hasAbilityUpgrade('repulse', 'pathA', 'minor')) {
+        this._repulseMeleeSpeedUntil = this.time.now + 1000;
+      }
+      // Repulse Path B minor: melee attacker takes 10 damage.
+      if ((this.gs?.abilityId === 'repulse') && this._hasAbilityUpgrade('repulse', 'pathB', 'minor')) {
+        const e = sourceEnemy;
+        if (e?.active && !e.isDummy) {
+          if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
+          e.hp -= 10;
+          try { this._flashEnemyHit(e); } catch (_) {}
+          if (e.hp <= 0) { try { this.killEnemy(e); } catch (_) {} }
+        }
+      }
+    } catch (_) {}
+    const dmg = this._applyAdsMeleeReduction((rawDmg || 0));
+    this.applyPlayerDamage(dmg);
+  }
+
+  _getBitsLaserHeatBuildMult() {
+    try {
+      // BITs Path A minor: reduce laser heat buildup by 15% (laser + laser_dmr).
+      if ((this.gs?.abilityId === 'bits') && this._hasAbilityUpgrade('bits', 'pathA', 'minor')) return 0.85;
+      return 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  _getBitsLaserOverheatCooldownMult() {
+    try {
+      // BITs Path B minor: laser overheat cooldown 40% faster.
+      if ((this.gs?.abilityId === 'bits') && this._hasAbilityUpgrade('bits', 'pathB', 'minor')) return 0.6;
+      return 1;
+    } catch (_) {
+      return 1;
+    }
+  }
+
   create() {
     const { width, height } = this.scale;
     // Fallback: if init() wasn't called with data, read from scene settings
@@ -987,9 +1149,25 @@ export default class CombatScene extends Phaser.Scene {
         try {
           const gs = this.gs; if (!gs) return;
           const now = this.time.now;
+          const dt = ((this.game?.loop?.delta) || 16) / 1000;
+          const maxS = Math.max(0, gs.shieldMax || 0);
+          // Energy Siphon Path A (major): overflow shield decays by 5/s.
+          try {
+            if ((gs.shield || 0) > maxS) {
+              const canOvercharge = ((this.gs?.abilityId === 'energy_siphon') && this._hasAbilityUpgrade('energy_siphon', 'pathA', 'major'));
+              if (canOvercharge) gs.shield = Math.max(maxS, (gs.shield || 0) - (5 * dt));
+              else gs.shield = maxS;
+            }
+          } catch (_) {}
           const since = now - (gs.lastDamagedAt || 0);
-          if (since >= (gs.shieldRegenDelayMs || 4000) && (gs.shield || 0) < (gs.shieldMax || 0)) {
-            const dt = ((this.game?.loop?.delta) || 16) / 1000;
+          let regenDelayMs = (gs.shieldRegenDelayMs || 4000);
+          // Energy Siphon Path B (minor): shield regeneration starts faster while equipped.
+          try {
+            if ((this.gs?.abilityId === 'energy_siphon') && this._hasAbilityUpgrade('energy_siphon', 'pathB', 'minor')) {
+              regenDelayMs = Math.max(0, Math.round(regenDelayMs * 0.7));
+            }
+          } catch (_) {}
+          if (since >= regenDelayMs && (gs.shield || 0) < (gs.shieldMax || 0)) {
             const inc = ((gs.shieldRegenPerSec || 0) + ((getPlayerEffects(this.gs)||{}).shieldRegenBonus || 0)) * dt;
             gs.shield = Math.min((gs.shield || 0) + inc, (gs.shieldMax || 0));
           }
@@ -1615,7 +1793,7 @@ export default class CombatScene extends Phaser.Scene {
           for (let i = 0; i < arr.length; i += 1) {
             const t = arr[i]; if (!t?.active) continue; const dx = t.x - ex; const dy = t.y - ey;
             if ((dx * dx + dy * dy) <= r2) {
-              const dmg = b._aoeDamage || 5; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg; }
+              const dmg = this._applyLandmineExplosionDamageBoost((b._aoeDamage || 5)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg; }
               else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg; if (t.hp <= 0) { this.killEnemy(t); } }
             }
           }
@@ -1663,7 +1841,7 @@ export default class CombatScene extends Phaser.Scene {
                     const arr3 = this.enemies?.getChildren?.() || [];
                     for (let m = 0; m < arr3.length; m += 1) {
                       const t2 = arr3[m]; if (!t2?.active) continue; const ddx = t2.x - cx; const ddy = t2.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) {
-                        const dmg2 = c._aoeDamage || 5; if (t2.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t2.hp !== 'number') t2.hp = t2.maxHp || 20; t2.hp -= dmg2; if (t2.hp <= 0) { this.killEnemy(t2); } }
+                        const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 5)); if (t2.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t2.hp !== 'number') t2.hp = t2.maxHp || 20; t2.hp -= dmg2; if (t2.hp <= 0) { this.killEnemy(t2); } }
                       }
                     }
                   } catch (_) {}
@@ -1734,7 +1912,7 @@ export default class CombatScene extends Phaser.Scene {
         if (b._toxinOnHit && b._toxinOnHit > 0) {
           e._toxinValue = Math.min(10, (e._toxinValue || 0) + b._toxinOnHit);
           if ((e._toxinValue || 0) >= 10) {
-            e._toxinedUntil = this.time.now + 2000;
+            e._toxinedUntil = this.time.now + this._applyCausticToxinDurationMs(2000);
             e._toxinValue = 0; // reset on trigger
             // Create/position toxin indicator for dummy
             if (!e._toxinIndicator) {
@@ -1804,7 +1982,7 @@ export default class CombatScene extends Phaser.Scene {
           e._toxinValue = Math.min(10, (e._toxinValue || 0) + addT);
           if ((e._toxinValue || 0) >= 10) {
             const nowT = this.time.now;
-            e._toxinedUntil = nowT + 2000;
+            e._toxinedUntil = nowT + this._applyCausticToxinDurationMs(2000);
             e._toxinValue = 0; // reset on trigger
             if (!e._toxinIndicator) {
               e._toxinIndicator = this.add.graphics();
@@ -1844,7 +2022,7 @@ export default class CombatScene extends Phaser.Scene {
           if (isPrimary && !b._rocket) return; // do not double-hit primary for core-only blasts
           const dx = other.x - b.x; const dy = other.y - b.y;
           if (dx * dx + dy * dy <= radius * radius) {
-            const splashDmg = b._rocket ? (b._aoeDamage || b.damage || 10) : Math.ceil((b.damage || 10) * 0.5);
+            const splashDmg = b._rocket ? this._applyLandmineExplosionDamageBoost((b._aoeDamage || b.damage || 10)) : this._applyLandmineExplosionDamageBoost(Math.ceil((b.damage || 10) * 0.5));
             if (other.isDummy) {
               this._dummyDamage = (this._dummyDamage || 0) + splashDmg;
             } else {
@@ -1897,7 +2075,7 @@ export default class CombatScene extends Phaser.Scene {
                 if (travel2 >= c._travelMax2 || collide2) {
                   const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                   try { impactBurst(this, cx, cy, { color: 0xffaa33, size: 'large', radius: rr }); } catch (_) {}
-                  try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 20; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                  try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 20)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                   try { c.destroy(); } catch (_) {}
                 }
               } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -1980,7 +2158,7 @@ export default class CombatScene extends Phaser.Scene {
       const ex = b.x; const ey = b.y; const radius = b._blastRadius || 70; const r2 = radius * radius;
         const pdx = this.player.x - ex; const pdy = this.player.y - ey;
         if ((pdx * pdx + pdy * pdy) <= r2 && !inIframes) {
-          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyAdsProjectileReduction(dmg); this.applyPlayerDamage(dmg);
+          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyLandmineExplosiveReduction(dmg); dmg = this._applyAdsProjectileReduction(dmg); this.applyPlayerDamage(dmg);
           // Short i-frames vs explosive rockets
           this.player.iframesUntil = this.time.now + 50;
           if (this.gs.hp <= 0) {
@@ -2047,7 +2225,7 @@ export default class CombatScene extends Phaser.Scene {
         const ex = b.x; const ey = b.y; const radius = b._blastRadius || 70; const r2 = radius * radius;
         const pdx = this.player.x - ex; const pdy = this.player.y - ey;
         if ((pdx * pdx + pdy * pdy) <= r2 && !inIframes) {
-          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyAdsProjectileReduction(dmg); this.applyPlayerDamage(dmg);
+          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 12; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyLandmineExplosiveReduction(dmg); dmg = this._applyAdsProjectileReduction(dmg); this.applyPlayerDamage(dmg);
           // Short i-frames vs explosive rockets
           this.player.iframesUntil = this.time.now + 50;
           if (this.gs.hp <= 0) {
@@ -2194,6 +2372,7 @@ export default class CombatScene extends Phaser.Scene {
               const mul2 = eff.enemyExplosionDmgMul || 1;
               finalDmg = Math.ceil(finalDmg * mul2);
             } catch (_) {}
+            finalDmg = this._applyLandmineExplosiveReduction(finalDmg);
             this.applyPlayerDamage(finalDmg);
           } catch (_) {}
           // Short i-frames vs Hazel missiles (explosives)
@@ -2303,6 +2482,22 @@ export default class CombatScene extends Phaser.Scene {
         this.gs.hp = Math.min(maxHp, (this.gs?.hp || 0) + (siphon.killHeal || 5));
       }
     } catch (_) {}
+    // Energy Siphon Path A (minor): gain 3 shield on kill while equipped (capped at shield max).
+    try {
+      if ((this.gs?.abilityId === 'energy_siphon') && this._hasAbilityUpgrade('energy_siphon', 'pathA', 'minor') && !e.isDummy) {
+        const maxS = Math.max(0, this.gs?.shieldMax || 0);
+        const curS = Math.max(0, this.gs?.shield || 0);
+        this.gs.shield = (curS >= maxS) ? curS : Math.min(maxS, curS + 3);
+      }
+    } catch (_) {}
+    // Vulcan Turret Path A (minor): permanent heal on kill while equipped
+    try {
+      if ((this.gs?.abilityId === 'vulcan_turret') && this._hasAbilityUpgrade('vulcan_turret', 'pathA', 'minor') && !e.isDummy) {
+        const eff = getPlayerEffects(this.gs) || {};
+        const maxHp = Math.max(1, (this.gs?.maxHp || 0) + (eff.bonusHp || 0));
+        this.gs.hp = Math.min(maxHp, (this.gs?.hp || 0) + 1);
+      }
+    } catch (_) {}
     try { if (e._igniteIndicator) { e._igniteIndicator.destroy(); e._igniteIndicator = null; } } catch (_) {}
     try { if (e._toxinIndicator) { e._toxinIndicator.destroy(); e._toxinIndicator = null; } } catch (_) {}
     try { if (e._stunIndicator) { e._stunIndicator.destroy(); e._stunIndicator = null; } } catch (_) {}
@@ -2362,6 +2557,7 @@ export default class CombatScene extends Phaser.Scene {
               const mul = eff.enemyExplosionDmgMul || 1;
               dmg = Math.ceil(dmg * mul);
             } catch (_) {}
+            dmg = this._applyLandmineExplosiveReduction(dmg);
             this.applyPlayerDamage(dmg);
             // Short i-frames vs Grenadier death explosion
             this.player.iframesUntil = now + 50;
@@ -2524,6 +2720,7 @@ export default class CombatScene extends Phaser.Scene {
               const mul2 = eff.enemyExplosionDmgMul || 1;
               finalDmg = Math.ceil(finalDmg * mul2);
             } catch (_) {}
+            finalDmg = this._applyLandmineExplosiveReduction(finalDmg);
             this.applyPlayerDamage(finalDmg);
           } catch (_) {}
           // Short i-frames vs Hazel Phase Bomb explosions
@@ -2577,7 +2774,7 @@ export default class CombatScene extends Phaser.Scene {
         if (!other?.active) return;
         const dx = other.x - ex; const dy = other.y - ey;
         if (dx * dx + dy * dy <= r2) {
-          const splashDmg = b._rocket ? (b._aoeDamage || b.damage || 10) : Math.ceil((b.damage || 10) * 0.5);
+          const splashDmg = b._rocket ? this._applyLandmineExplosionDamageBoost((b._aoeDamage || b.damage || 10)) : this._applyLandmineExplosionDamageBoost(Math.ceil((b.damage || 10) * 0.5));
           if (other.isDummy) {
             this._dummyDamage = (this._dummyDamage || 0) + splashDmg;
           } else {
@@ -2626,7 +2823,7 @@ export default class CombatScene extends Phaser.Scene {
               if (travel2 >= c._travelMax2 || collide2) {
                 const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                 try { impactBurst(this, cx, cy, { color: 0xffaa33, size: 'large', radius: rr }); } catch (_) {}
-                try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 20; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 20)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                 try { c.destroy(); } catch (_) {}
               }
             } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -2764,7 +2961,7 @@ export default class CombatScene extends Phaser.Scene {
       if ((pdx * pdx + pdy * pdy) <= r2) {
         const now = this.time.now;
         if (now >= (this.player.iframesUntil || 0)) {
-          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 14; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} this.applyPlayerDamage(dmg);
+          let dmg = (typeof b.damage === 'number' && b.damage > 0) ? b.damage : 14; try { const eff = getPlayerEffects(this.gs) || {}; const mul = eff.enemyExplosionDmgMul || 1; dmg = Math.ceil(dmg * mul); } catch (_) {} dmg = this._applyLandmineExplosiveReduction(dmg); this.applyPlayerDamage(dmg);
           // Short i-frames vs enemy grenade explosions
           this.player.iframesUntil = now + 50;
           if (this.gs.hp <= 0) {
@@ -2988,7 +3185,7 @@ export default class CombatScene extends Phaser.Scene {
         b._speed = Math.max(40, weapon.bulletSpeed | 0);
         b._maxTurn = Phaser.Math.DegToRad(2) * 0.1; // ~0.2闂?frame (more limited)
         b._fov = Phaser.Math.DegToRad(60); // narrower lock cone
-        // Slightly increase Smart HMG homing: ~0.75闂傚倸鍊峰ù鍥р枖閺囥垹绐楅柟鐗堟緲閸戠姴鈹戦悩瀹犲缂?frame (~45闂傚倸鍊峰ù鍥р枖閺囥垹绐楅柟鐗堟緲閸戠姴鈹戦悩瀹犲缂?s)
+        // Slightly increase Smart HMG homing.
         b._maxTurn = Phaser.Math.DegToRad(0.75);
         b._noTurnUntil = this.time.now + 120; // brief straight launch
         // Override: interpret _maxTurn as deg/s for time-based turn; 0.75 deg/frame @60 FPS 闂?45 deg/s
@@ -3050,7 +3247,7 @@ export default class CombatScene extends Phaser.Scene {
         b._angle = angle0;
         b._speed = Math.max(40, weapon.bulletSpeed | 0); // low velocity
         // Max turn per frame baseline is increased for no-core missiles (effectively time-scaled later)
-        // Drastically higher base homing for no-core: 8 deg/frame (~480闂傚倸鍊峰ù鍥р枖閺囥垹绐楅柟鐗堟緲閸戠姴鈹戦悩瀹犲缂?s at 60 FPS)
+        // Drastically higher base homing for no-core.
         b._maxTurn = Phaser.Math.DegToRad(8);
         // Apply optional guided turn-rate multiplier from cores
         if (typeof weapon._guidedTurnMult === 'number') {
@@ -3297,7 +3494,7 @@ export default class CombatScene extends Phaser.Scene {
                 this.enemies.getChildren().forEach((other) => {
                   if (!other.active) return; const ddx = other.x - ex; const ddy = other.y - ey;
                   if ((ddx * ddx + ddy * ddy) <= r2) {
-                    const aoe = (b._aoeDamage || b.damage || 10);
+                    const aoe = this._applyLandmineExplosionDamageBoost((b._aoeDamage || b.damage || 10));
                     if (other.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + aoe; }
                     else { if (typeof other.hp !== 'number') other.hp = other.maxHp || 20; other.hp -= aoe; try { this._flashEnemyHit(other); } catch (_) {} if (other.hp <= 0) { this.killEnemy(other); } }
                   }
@@ -3340,7 +3537,7 @@ export default class CombatScene extends Phaser.Scene {
                         if (travel2 >= c._travelMax2 || collide2) {
                           const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                           try { impactBurst(this, cx, cy, { color: 0xffaa33, size: 'large', radius: rr }); } catch (_) {}
-                          try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 20; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                          try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 20)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                           try { c.destroy(); } catch (_) {}
                         }
                       } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -3377,7 +3574,7 @@ export default class CombatScene extends Phaser.Scene {
                   this.enemies.getChildren().forEach((other) => {
                     if (!other.active) return; const ddx = other.x - ex; const ddy = other.y - ey;
                     if ((ddx * ddx + ddy * ddy) <= r2) {
-                      const aoe = (b._aoeDamage || b.damage || 10);
+                      const aoe = this._applyLandmineExplosionDamageBoost((b._aoeDamage || b.damage || 10));
                       if (other.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + aoe; }
                       else { if (typeof other.hp !== 'number') other.hp = other.maxHp || 20; other.hp -= aoe; if (other.hp <= 0) { this.killEnemy(other); } }
                     }
@@ -3418,7 +3615,7 @@ export default class CombatScene extends Phaser.Scene {
                           if (travel2 >= c._travelMax2 || collide2) {
                             const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                             try { impactBurst(this, cx, cy, { color: 0xffaa33, size: 'large', radius: rr }); } catch (_) {}
-                            try { const arr2 = this.enemies?.getChildren?.() || []; for (let m = 0; m < arr2.length; m += 1) { const t = arr2[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 20; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                            try { const arr2 = this.enemies?.getChildren?.() || []; for (let m = 0; m < arr2.length; m += 1) { const t = arr2[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 20)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                             try { c.destroy(); } catch (_) {}
                           }
                         } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -3461,7 +3658,7 @@ export default class CombatScene extends Phaser.Scene {
                   this.enemies.getChildren().forEach((other) => {
                     if (!other.active) return; const ddx = other.x - ex; const ddy = other.y - ey;
                     if ((ddx * ddx + ddy * ddy) <= r2) {
-                      const aoe = (b._aoeDamage || b.damage || 10);
+                      const aoe = this._applyLandmineExplosionDamageBoost((b._aoeDamage || b.damage || 10));
                       if (other.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + aoe; }
                       else { if (typeof other.hp !== 'number') other.hp = other.maxHp || 20; other.hp -= aoe; if (other.hp <= 0) { this.killEnemy(other); } }
                     }
@@ -3483,7 +3680,7 @@ export default class CombatScene extends Phaser.Scene {
                           if ((mx * mx + my * my) >= c._travelMax2 || collide2) {
                             const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                             try { impactBurst(this, cx, cy, { color: 0xffaa33, size: 'large', radius: rr }); } catch (_) {}
-                            try { const arr2 = this.enemies?.getChildren?.() || []; for (let m = 0; m < arr2.length; m += 1) { const t = arr2[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 20; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                            try { const arr2 = this.enemies?.getChildren?.() || []; for (let m = 0; m < arr2.length; m += 1) { const t = arr2[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 20)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                             try { c.destroy(); } catch (_) {}
                           }
                         } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -3536,7 +3733,7 @@ export default class CombatScene extends Phaser.Scene {
               if (!other.active) return;
               const ddx = other.x - ex; const ddy = other.y - ey;
               if ((ddx * ddx + ddy * ddy) <= r2) {
-                const aoe = (b._aoeDamage || b.damage || 10);
+                const aoe = this._applyLandmineExplosionDamageBoost((b._aoeDamage || b.damage || 10));
                 if (other.isDummy) {
                   this._dummyDamage = (this._dummyDamage || 0) + aoe;
                 } else {
@@ -3586,7 +3783,7 @@ export default class CombatScene extends Phaser.Scene {
                     if (travel2 >= c._travelMax2 || collide2) {
                       const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                       try { impactBurst(this, cx, cy, { color: 0xffaa33, size: 'large', radius: rr }); } catch (_) {}
-                      try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 20; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                      try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 20)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                       try { c.destroy(); } catch (_) {}
                     }
                   } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -3995,7 +4192,7 @@ export default class CombatScene extends Phaser.Scene {
         const w = getEffectiveWeapon(this.gs, this.gs.activeWeapon);
         firingSlow = (typeof w._firingMoveMult === 'number') ? w._firingMoveMult : 0.3;
       }
-      const speed = 200 * (eff.moveSpeedMult || 1) * firingSlow;
+      const speed = 200 * (eff.moveSpeedMult || 1) * this._getRepulseMeleeSpeedMult() * firingSlow;
       (this.playerCollider || this.player).setVelocity(mv.x * speed, mv.y * speed);
     }
 
@@ -4122,6 +4319,40 @@ export default class CombatScene extends Phaser.Scene {
       this.registry.set('magSize', cap);
       this.registry.set('ammoInMag', this.ammoByWeapon[this._lastActiveWeapon]);
     }
+    // Vulcan Turret Path B (minor): inactive equipped weapon auto-reloads after 5s.
+    try {
+      const enableInactiveReload = ((this.gs?.abilityId === 'vulcan_turret') && this._hasAbilityUpgrade('vulcan_turret', 'pathB', 'minor'));
+      if (enableInactiveReload) {
+        if (!this._inactiveAutoReloadSince) this._inactiveAutoReloadSince = {};
+        const nowMs = this.time.now;
+        const slots = this.gs?.equippedWeapons || [];
+        for (let i = 0; i < slots.length; i += 1) {
+          const wid = slots[i];
+          if (!wid) continue;
+          if (wid === this.gs?.activeWeapon) {
+            delete this._inactiveAutoReloadSince[wid];
+            continue;
+          }
+          const w = getEffectiveWeapon(this.gs, wid);
+          const useCeil = !!w?._magRoundUp;
+          const raw = (w?.magSize || 1);
+          const cap = Math.max(1, useCeil ? Math.ceil(raw) : Math.floor(raw));
+          this.ensureAmmoFor(wid, cap, true);
+          const ammo = this.ammoByWeapon[wid] ?? cap;
+          if (ammo >= cap) {
+            delete this._inactiveAutoReloadSince[wid];
+            continue;
+          }
+          if (!this._inactiveAutoReloadSince[wid]) this._inactiveAutoReloadSince[wid] = nowMs;
+          if ((nowMs - this._inactiveAutoReloadSince[wid]) >= 5000) {
+            this.ammoByWeapon[wid] = cap;
+            delete this._inactiveAutoReloadSince[wid];
+          }
+        }
+      } else if (this._inactiveAutoReloadSince) {
+        this._inactiveAutoReloadSince = {};
+      }
+    } catch (_) {}
     // Detect if the loadout menu is open in the UI scene; when open, suppress firing.
     let loadoutOpen = false;
     try {
@@ -4275,7 +4506,11 @@ export default class CombatScene extends Phaser.Scene {
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'bits') {
           this.deployBITs();
-          this.ability.cooldownMs = noCd ? 1 : 14000;
+          let bitsCd = 14000;
+          try {
+            if (this._hasAbilityUpgrade('bits', 'pathA', 'major')) bitsCd = 18000;
+          } catch (_) {}
+          this.ability.cooldownMs = noCd ? 1 : bitsCd;
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'repulse') {
           this.deployRepulsionPulse();
@@ -4304,7 +4539,11 @@ export default class CombatScene extends Phaser.Scene {
         } else if (abilityId === 'energy_siphon') {
           if (!this._energySiphon) this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map(), nextAmbientAt: 0 };
           this._energySiphon.active = true;
-          this._energySiphon.until = nowT + 8000;
+          let siphonDurationMs = 8000;
+          try {
+            if (this._hasAbilityUpgrade('energy_siphon', 'pathB', 'major')) siphonDurationMs += 3000;
+          } catch (_) {}
+          this._energySiphon.until = nowT + siphonDurationMs;
           this._energySiphon.ratio = 0.25;
           this._energySiphon.killHeal = 5;
           this._energySiphon.nextAmbientAt = nowT;
@@ -4364,7 +4603,9 @@ export default class CombatScene extends Phaser.Scene {
           if (dealt > 0) {
             const gain = dealt * (siphon.ratio || 0.25);
             const maxS = Math.max(0, this.gs?.shieldMax || 0);
-            this.gs.shield = Math.min(maxS, Math.max(0, (this.gs?.shield || 0) + gain));
+            const canOvercharge = ((this.gs?.abilityId === 'energy_siphon') && this._hasAbilityUpgrade('energy_siphon', 'pathA', 'major'));
+            const capS = canOvercharge ? Number.POSITIVE_INFINITY : maxS;
+            this.gs.shield = Math.min(capS, Math.max(0, (this.gs?.shield || 0) + gain));
           }
         }
       }
@@ -4629,7 +4870,9 @@ export default class CombatScene extends Phaser.Scene {
             const desired = Math.atan2(best.y - headY, best.x - t.x);
             const diff = Phaser.Math.Angle.Wrap(desired - (t.angle || 0));
             const dtTurn = Math.max(0, (nowT - (t._lastTurnAt || nowT)) / 1000);
-            const maxTurn = Phaser.Math.DegToRad(300) * dtTurn;
+            let turnDegPerSec = 300;
+            if ((this.gs?.abilityId === 'vulcan_turret') && this._hasAbilityUpgrade('vulcan_turret', 'pathA', 'major')) turnDegPerSec *= 1.5;
+            const maxTurn = Phaser.Math.DegToRad(turnDegPerSec) * dtTurn;
             const step = Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
             t.angle = (t.angle || 0) + step;
             t._lastTurnAt = nowT;
@@ -4688,7 +4931,9 @@ export default class CombatScene extends Phaser.Scene {
               b.setActive(true).setVisible(true);
               b.setCircle(2).setOffset(-2, -2);
               b.setVelocity(Math.cos(ang) * 900, Math.sin(ang) * 900);
-              b.damage = 8;
+              let turretDmg = 8;
+              if ((this.gs?.abilityId === 'vulcan_turret') && this._hasAbilityUpgrade('vulcan_turret', 'pathB', 'major')) turretDmg += 1;
+              b.damage = turretDmg;
               b._vulcan = true;
               b.setTint(0xffee66);
               b.update = () => {
@@ -4735,12 +4980,12 @@ export default class CombatScene extends Phaser.Scene {
       }
     }
 
-    // Toxin ticking (global): apply 3 DPS and manage indicator/disorientation window
+    // Toxin ticking (global): apply toxin DPS and manage indicator/disorientation window
     this._toxinTickAccum = (this._toxinTickAccum || 0) + dt;
     const toxinTick = 0.1;
     if (this._toxinTickAccum >= toxinTick) {
       const step = this._toxinTickAccum; this._toxinTickAccum = 0;
-      const dps = 3;
+      const dps = this._applyCausticToxinDps(3);
       const nowT = this.time.now;
       const enemies = this.enemies?.getChildren?.() || [];
       for (let i = 0; i < enemies.length; i += 1) {
@@ -4884,7 +5129,7 @@ export default class CombatScene extends Phaser.Scene {
           const dx = e.x - f.x; const dy = e.y - f.y; if ((dx * dx + dy * dy) <= r2) {
             e._toxinValue = Math.min(10, (e._toxinValue || 0) + add);
             if ((e._toxinValue || 0) >= 10) {
-              e._toxinedUntil = nowT + 2000; e._toxinValue = 0;
+              e._toxinedUntil = nowT + this._applyCausticToxinDurationMs(2000); e._toxinValue = 0;
               if (!e._toxinIndicator) { e._toxinIndicator = this.add.graphics(); try { e._toxinIndicator.setDepth(9000); } catch (_) {} e._toxinIndicator.fillStyle(0x33ff33, 1).fillCircle(0, 0, 2); }
               try { e._toxinIndicator.setPosition(e.x, e.y - 18); } catch (_) {}
             }
@@ -4993,7 +5238,7 @@ export default class CombatScene extends Phaser.Scene {
               const d = Math.sqrt(d2) || 1; const nx = dx / d; const ny = dy / d; const power = 240;
               // Apply 1s knockback velocity; let physics/barricades handle collisions
               if (!e.isDummy) {
-                e._repulseUntil = nowPush + 1000;
+                e._repulseUntil = nowPush + this._getRepulsePushDurationMs();
                 e._repulseVX = nx * power; e._repulseVY = ny * power;
                 try { e.body?.setVelocity?.(e._repulseVX, e._repulseVY); } catch (_) { try { e.setVelocity(e._repulseVX, e._repulseVY); } catch (_) {} }
               }
@@ -5011,10 +5256,11 @@ export default class CombatScene extends Phaser.Scene {
               rp._pushedSet.add(e);
               if (!rp._hitSet.has(e)) {
                 rp._hitSet.add(e);
-                if (e.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + 5; }
+                const pulseDmg = this._getRepulsePulseHitDamage();
+                if (e.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + pulseDmg; }
                 else {
                   if (typeof e.hp !== 'number') e.hp = e.maxHp || 20;
-                  e.hp -= 5;
+                  e.hp -= pulseDmg;
                   try { this._flashEnemyHit(e); } catch (_) {}
                   if (e.hp <= 0) { try { this.killEnemy(e); } catch (_) {} }
                 }
@@ -5756,7 +6002,7 @@ export default class CombatScene extends Phaser.Scene {
             const dxm = targetX - e.x;
             const dym = targetY - e.y;
             let desired = Math.atan2(dym, dxm);
-            // Unwrap desired relative to current angle to avoid sudden flips around ±π
+            // Unwrap desired relative to current angle to avoid sudden flips.
             if (typeof e._angle === 'number') {
               const current = e._angle;
               const diffWrapped = Phaser.Math.Angle.Wrap(desired - current);
@@ -6321,7 +6567,7 @@ export default class CombatScene extends Phaser.Scene {
                   try { e._aimG?.clear(); } catch (_) {}
                   // Lock sweep arc based on player position at sweep start
                   const base = Math.atan2(player.y - e.y, player.x - e.x);
-                  // Sweeping beam: 40 degrees total (±20)
+                  // Sweeping beam: 40 degrees total.
                   e._ldSweepFrom = base - Phaser.Math.DegToRad(20);
                   e._ldSweepTo = base + Phaser.Math.DegToRad(20);
                   e._ldSweepT = 0;
@@ -6615,7 +6861,7 @@ export default class CombatScene extends Phaser.Scene {
                 const angP = Math.atan2(pdy, pdx);
                 const diff = Math.abs(Phaser.Math.Angle.Wrap(angP - (e._meleeFacing || 0)));
                 if (dd <= cfg.range && diff <= cfg.half && !e._meleeDidHit) {
-                  this.applyPlayerDamage(this._applyAdsMeleeReduction((e.damage || 10)));
+                  this._applyEnemyMeleeDamageToPlayer((e.damage || 10), e);
                   // Short melee-specific i-frames so multiple melee hits don't stack instantly
                   this.player.iframesUntil = this.time.now + 75;
                   try { impactBurst(this, this.player.x, this.player.y, { color: 0xff3333, size: 'small' }); } catch (_) {}
@@ -6683,7 +6929,7 @@ export default class CombatScene extends Phaser.Scene {
                 const angP = Math.atan2(pdy, pdx);
                 const diff = Math.abs(Phaser.Math.Angle.Wrap(angP - (e._bmFacing || 0)));
                 if (dd <= cfg.range && diff <= cfg.half && !e._bmDidHit) {
-                  this.applyPlayerDamage(this._applyAdsMeleeReduction((e.damage || 10)));
+                  this._applyEnemyMeleeDamageToPlayer((e.damage || 10), e);
                   this.player.iframesUntil = this.time.now + 75;
                   try { impactBurst(this, this.player.x, this.player.y, { color: 0xff3333, size: 'small' }); } catch (_) {}
                   e._bmDidHit = true;
@@ -7144,7 +7390,7 @@ export default class CombatScene extends Phaser.Scene {
             const t = ((e.burstCount || 15) - e._burstLeft) / Math.max(1, (e.burstCount || 15) - 1);
             let ang = base + (t - 0.5) * spreadRad * 0.9;
             if (e._toxinedUntil && now < e._toxinedUntil) {
-              const extra = Phaser.Math.DegToRad(50);
+              const extra = Phaser.Math.DegToRad(this._applyCausticToxinSpreadDeg(50));
               ang += Phaser.Math.FloatBetween(-extra/2, extra/2);
             }
             ang += Phaser.Math.FloatBetween(-0.05, 0.05) * spreadRad;
@@ -7176,7 +7422,7 @@ export default class CombatScene extends Phaser.Scene {
             e.lastShotAt = nowT;
             let ang = Math.atan2(dy, dx);
             if (e._toxinedUntil && nowT < e._toxinedUntil) {
-              const extra = Phaser.Math.DegToRad(50);
+              const extra = Phaser.Math.DegToRad(this._applyCausticToxinSpreadDeg(50));
               ang += Phaser.Math.FloatBetween(-extra / 2, extra / 2);
             }
             const speed = 300;
@@ -7236,6 +7482,7 @@ export default class CombatScene extends Phaser.Scene {
                         const mul = eff.enemyExplosionDmgMul || 1;
                         dmg = Math.ceil(dmg * mul);
                       } catch (_) {}
+                      dmg = this._applyLandmineExplosiveReduction(dmg);
                       this.applyPlayerDamage(dmg);
                       // Short i-frames vs Rocketeer rockets (now grenades)
                       this.player.iframesUntil = now + 50;
@@ -7266,7 +7513,7 @@ export default class CombatScene extends Phaser.Scene {
           if (e._burstLeft && e._burstLeft > 0 && nowT >= (e._nextBurstShotAt || 0)) {
             let ang = Math.atan2(dy, dx);
             if (e._toxinedUntil && nowT < e._toxinedUntil) {
-              const extra = Phaser.Math.DegToRad(50);
+              const extra = Phaser.Math.DegToRad(this._applyCausticToxinSpreadDeg(50));
               ang += Phaser.Math.FloatBetween(-extra/2, extra/2);
             }
             const vx = Math.cos(ang) * 240;
@@ -7312,7 +7559,7 @@ export default class CombatScene extends Phaser.Scene {
             // Fire a slower, high-damage shot
             let angle = Math.atan2(dy, dx);
             if (e._toxinedUntil && now < e._toxinedUntil) {
-              const extra = Phaser.Math.DegToRad(50);
+              const extra = Phaser.Math.DegToRad(this._applyCausticToxinSpreadDeg(50));
               angle += Phaser.Math.FloatBetween(-extra/2, extra/2);
             }
               const snipeSpeed = 1350;
@@ -7499,7 +7746,7 @@ export default class CombatScene extends Phaser.Scene {
         const r2 = radius * radius; const pdx = this.player.x - ex; const pdy = this.player.y - ey;
           if ((pdx * pdx + pdy * pdy) <= r2) {
         if (now >= (this.player.iframesUntil || 0)) {
-            { let dmg=(e?.damage||10); try{ const eff=getPlayerEffects(this.gs)||{}; const mul=eff.enemyExplosionDmgMul||1; dmg=Math.ceil(dmg*mul);}catch(_){} this.applyPlayerDamage(dmg); }
+            { let dmg=(e?.damage||10); try{ const eff=getPlayerEffects(this.gs)||{}; const mul=eff.enemyExplosionDmgMul||1; dmg=Math.ceil(dmg*mul);}catch(_){} dmg = this._applyLandmineExplosiveReduction(dmg); this.applyPlayerDamage(dmg); }
             // Short i-frames vs enemy grenades (Grenadier/Bigwig special)
             this.player.iframesUntil = now + 50;
             if (this.gs.hp <= 0) {
@@ -7597,6 +7844,7 @@ export default class CombatScene extends Phaser.Scene {
                 const mul = eff.enemyExplosionDmgMul || 1;
                 dmg = Math.ceil(dmg * mul);
               } catch (_) {}
+              dmg = this._applyLandmineExplosiveReduction(dmg);
               this.applyPlayerDamage(dmg);
               // Short i-frames vs Bigwig bombardment explosions
               this.player.iframesUntil = now + 50;
@@ -7872,7 +8120,7 @@ export default class CombatScene extends Phaser.Scene {
           e._dnAssaultWindupLen = 200;
           // Cache base speed for slow/restore
           e._dnBaseSpeed = e.speed || 120;
-          // Heal thresholds (60%, 40%, 25%, 10%) – each triggers at most once
+          // Heal thresholds (60%, 40%, 25%, 10%), each triggers at most once.
           e._dnHealUsed60 = false;
           e._dnHealUsed40 = false;
           e._dnHealUsed25 = false;
@@ -8892,7 +9140,7 @@ export default class CombatScene extends Phaser.Scene {
           const jitterScale = 0.18;
           ang += Phaser.Math.FloatBetween(-jitterScale, jitterScale) * spreadRad;
           if (e._toxinedUntil && now < e._toxinedUntil) {
-            const extra = Phaser.Math.DegToRad(50);
+            const extra = Phaser.Math.DegToRad(this._applyCausticToxinSpreadDeg(50));
             ang += Phaser.Math.FloatBetween(-extra / 2, extra / 2);
           }
 
@@ -9411,12 +9659,15 @@ export default class CombatScene extends Phaser.Scene {
         pixelSparks(this, cx, cy, { angleRad: a, count: 1, spreadDeg: 6, speedMin: 80, speedMax: 180, lifeMs: 240, color: 0x33ff66, size: 2, alpha: 0.8 });
       }
     } catch (_) {}
-    const count = 6;
+    const bitsPathAMajor = ((this.gs?.abilityId === 'bits') && this._hasAbilityUpgrade('bits', 'pathA', 'major'));
+    const bitsPathBMajor = ((this.gs?.abilityId === 'bits') && this._hasAbilityUpgrade('bits', 'pathB', 'major'));
+    const count = bitsPathAMajor ? 4 : (bitsPathBMajor ? 9 : 6);
+    const bitLifetimeMs = bitsPathAMajor ? 14000 : 7000;
     for (let i = 0; i < count; i += 1) {
       // Use asset sprite for BIT unit and fit to moderate height
       const g = createFittedImage(this, this.player.x, this.player.y, 'ability_bit', 14);
       try { g.setDepth(9000); } catch (_) {}
-      const bit = { x: this.player.x, y: this.player.y, vx: 0, vy: 0, g, target: null, lastShotAt: 0, holdUntil: 0, moveUntil: 0, despawnAt: this.time.now + 7000, spawnScatterUntil: this.time.now + Phaser.Math.Between(260, 420) };
+      const bit = { x: this.player.x, y: this.player.y, vx: 0, vy: 0, g, target: null, lastShotAt: 0, holdUntil: 0, moveUntil: 0, despawnAt: this.time.now + bitLifetimeMs, spawnScatterUntil: this.time.now + Phaser.Math.Between(260, 420) };
       // Thruster VFX (additive tiny tail like missiles)
       try { bit._thr = this.add.graphics(); bit._thr.setDepth(8800); bit._thr.setBlendMode?.(Phaser.BlendModes.ADD); } catch (_) {}
       // initial scatter velocity
@@ -9765,7 +10016,7 @@ export default class CombatScene extends Phaser.Scene {
       if (ammo <= 0) {
         if (!this.reload.active) {
           this.reload.active = true;
-          this.reload.duration = this.getActiveReloadMs();
+          this.reload.duration = Math.max(1, Math.round(this.getActiveReloadMs() * this._getBitsLaserOverheatCooldownMult()));
           this.reload.until = now + this.reload.duration;
           this.registry.set('reloadActive', true);
           this.registry.set('reloadProgress', 0);
@@ -9898,7 +10149,7 @@ export default class CombatScene extends Phaser.Scene {
     const canFire = canPress && !lz.overheat;
     if (isDmr) {
       const hasOverheatCore = weapon._core === 'laser_dmr_overheat';
-      const heatPerShot = hasOverheatCore ? (1 / 5) : (1 / 6);
+      const heatPerShot = (hasOverheatCore ? (1 / 5) : (1 / 6)) * this._getBitsLaserHeatBuildMult();
       const coolDelay = 0.5;
       const coolFastPerSec = 0.6;
       const fireRateMs = weapon.fireRateMs || 150;
@@ -10072,7 +10323,7 @@ export default class CombatScene extends Phaser.Scene {
       lz._dmrWasDown = !!ptr?.isDown;
       return;
     }
-    const heatPerSec = 1 / 6; // overheat in 6s
+    const heatPerSec = (1 / 6) * this._getBitsLaserHeatBuildMult(); // overheat in 6s baseline
     const coolDelay = 0.2; // start cooling after 0.2s when not firing
     const coolFastPerSec = 0.75; // fast cool
     const tickRate = 0.1; // damage tick 10 Hz
@@ -10085,7 +10336,7 @@ export default class CombatScene extends Phaser.Scene {
         // Force cooldown using reload bar
         lz.overheat = true;
         this.reload.active = true;
-        this.reload.duration = this.getActiveReloadMs();
+        this.reload.duration = Math.max(1, Math.round(this.getActiveReloadMs() * this._getBitsLaserOverheatCooldownMult()));
         this.reload.until = now + this.reload.duration;
         this.registry.set('reloadActive', true);
         this.registry.set('reloadProgress', 0);
@@ -10449,7 +10700,7 @@ export default class CombatScene extends Phaser.Scene {
         for (let i = 0; i < arr.length; i += 1) {
           const e = arr[i]; if (!e?.active) continue; const dx = e.x - ex; const dy = e.y - ey;
           if ((dx * dx + dy * dy) <= r2) {
-            const dmg = b._aoeDamage || 5; if (e.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg; }
+            const dmg = this._applyLandmineExplosionDamageBoost((b._aoeDamage || 5)); if (e.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg; }
             else { if (typeof e.hp !== 'number') e.hp = e.maxHp || 20; e.hp -= dmg; if (e.hp <= 0) { this.killEnemy(e); } }
           }
         }
@@ -10484,7 +10735,7 @@ export default class CombatScene extends Phaser.Scene {
                 const cx = c.x; const cy = c.y; const rr = c._blastRadius || 60; const r2c = rr * rr;
                 try { impactBurst(this, cx, cy, { color: 0x33ff66, size: 'large', radius: rr }); } catch (_) {}
                 try { this.spawnToxinField(cx, cy, rr, 6000, 20); } catch (_) {}
-                try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = c._aoeDamage || 5; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
+                try { const list = this.enemies?.getChildren?.() || []; for (let m = 0; m < list.length; m += 1) { const t = list[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) { const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 5)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } } } } } catch (_) {}
                 try { c.destroy(); } catch (_) {}
               }
             } catch (_) { try { c.destroy(); } catch (__ ) {} }
@@ -10571,8 +10822,8 @@ export default class CombatScene extends Phaser.Scene {
     b.setVelocity(vx, vy);
     b.setTint(0x33ff66);
     b._cc = true; b._startX = startX; b._startY = startY; b._targetX = targetX; b._targetY = targetY;
-    b._blastRadius = 60; // > MGL (52) and < Rocket (70)
-    b._aoeDamage = 5;
+    b._blastRadius = this._applyCausticExplosionRadius(60); // > MGL (52) and < Rocket (70)
+    b._aoeDamage = 10;
     b.update = () => {
       try {
         const dx = b.x - b._startX; const dy = b.y - b._startY;
@@ -10621,7 +10872,8 @@ export default class CombatScene extends Phaser.Scene {
             for (let i = 0; i < arr.length; i += 1) {
               const e = arr[i]; if (!e?.active) continue;
               const ddx = e.x - ex; const ddy = e.y - ey; if ((ddx * ddx + ddy * ddy) <= r2) {
-                const dmg = b._aoeDamage || 5;
+                let dmg = this._applyLandmineExplosionDamageBoost((b._aoeDamage || 5));
+                dmg = this._applyCausticPrimaryExplosionDamage(dmg);
                 if (e.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg; }
                 else { if (typeof e.hp !== 'number') e.hp = e.maxHp || 20; e.hp -= dmg; if (e.hp <= 0) { this.killEnemy(e); } }
               }
@@ -10638,7 +10890,7 @@ export default class CombatScene extends Phaser.Scene {
              const spd = 420; const vx2 = Math.cos(ang) * spd; const vy2 = Math.sin(ang) * spd;
              const c = this.bullets.get(ex, ey, 'bullet'); if (!c) continue;
              c.setActive(true).setVisible(true); c.setCircle(4).setOffset(-4, -4); try { c.setScale(1.1); } catch (_) {}
-             c.setVelocity(vx2, vy2); c.setTint(0x33ff66); c._ccCluster = true; c._startX = ex; c._startY = ey; c._travelMax2 = dist * dist; c._blastRadius = r; c._aoeDamage = 5; c._ignoreBossForTravel = hitBossOnContact;
+             c.setVelocity(vx2, vy2); c.setTint(0x33ff66); c._ccCluster = true; c._startX = ex; c._startY = ey; c._travelMax2 = dist * dist; c._blastRadius = r; c._aoeDamage = 10; c._ignoreBossForTravel = hitBossOnContact;
              c.update = () => {
                try {
                  const mx = c.x - c._startX; const my = c.y - c._startY; let collide2 = false;
@@ -10680,7 +10932,7 @@ export default class CombatScene extends Phaser.Scene {
                     const arr2 = this.enemies?.getChildren?.() || [];
                     for (let m = 0; m < arr2.length; m += 1) {
                       const t = arr2[m]; if (!t?.active) continue; const ddx = t.x - cx; const ddy = t.y - cy; if ((ddx * ddx + ddy * ddy) <= r2c) {
-                        const dmg2 = c._aoeDamage || 5; if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } }
+                        const dmg2 = this._applyLandmineExplosionDamageBoost((c._aoeDamage || 5)); if (t.isDummy) { this._dummyDamage = (this._dummyDamage || 0) + dmg2; } else { if (typeof t.hp !== 'number') t.hp = t.maxHp || 20; t.hp -= dmg2; if (t.hp <= 0) { this.killEnemy(t); } }
                       }
                     }
                   } catch (_) {}
@@ -10764,13 +11016,58 @@ export default class CombatScene extends Phaser.Scene {
         try {
           const arr2 = this.enemies?.getChildren?.() || [];
           const nowS = this.time.now;
+          const enableEchoStun = !!((this.gs?.abilityId === 'landmine_dispenser') && this._hasAbilityUpgrade('landmine_dispenser', 'pathA', 'major'));
+          const enableFireField = !!((this.gs?.abilityId === 'landmine_dispenser') && this._hasAbilityUpgrade('landmine_dispenser', 'pathB', 'major'));
+          const lmFieldRadius = 50;
+          const lmFieldR2 = lmFieldRadius * lmFieldRadius;
+          const lmFieldDurationMs = 1000;
+          if (enableFireField) {
+            try { this.spawnFireField(ex, ey, lmFieldRadius, lmFieldDurationMs); } catch (_) {}
+          }
+          const applyStunPulse = (target, atTime) => {
+            if (!target?.active) return;
+            target._stunValue = Math.min(10, (target._stunValue || 0) + 10);
+            if ((target._stunValue || 0) >= 10) {
+              target._stunnedUntil = atTime + 200;
+              target._stunValue = 0;
+              if (!target._stunIndicator) {
+                target._stunIndicator = this.add.graphics();
+                try { target._stunIndicator.setDepth(9000); } catch (_) {}
+                target._stunIndicator.fillStyle(0xffff33, 1).fillCircle(0, 0, 2);
+              }
+              try { target._stunIndicator.setPosition(target.x, target.y - 22); } catch (_) {}
+            }
+          };
           for (let i2 = 0; i2 < arr2.length; i2 += 1) {
             const e2 = arr2[i2]; if (!e2?.active || e2.isDummy) continue;
             const dx2 = e2.x - ex; const dy2 = e2.y - ey; if ((dx2 * dx2 + dy2 * dy2) <= r2) {
-              let dmg2 = m._dmg || 30; if (typeof e2.hp !== 'number') e2.hp = e2.maxHp || 20; e2.hp -= dmg2; if (e2.hp <= 0) { this.killEnemy?.(e2); }
+              let dmg2 = this._applyLandmineExplosionDamageBoost((m._dmg || 30)); if (typeof e2.hp !== 'number') e2.hp = e2.maxHp || 20; e2.hp -= dmg2; if (e2.hp <= 0) { this.killEnemy?.(e2); }
+              // Mirror MGL fire field immediate ignite buildup on detonation.
+              if (enableFireField && ((dx2 * dx2 + dy2 * dy2) <= lmFieldR2)) {
+                e2._igniteValue = Math.min(10, (e2._igniteValue || 0) + 5);
+                if ((e2._igniteValue || 0) >= 10) {
+                  e2._ignitedUntil = nowS + 2000;
+                  e2._igniteValue = 0;
+                  if (!e2._igniteIndicator) {
+                    e2._igniteIndicator = this.add.graphics();
+                    try { e2._igniteIndicator.setDepth(9000); } catch (_) {}
+                    e2._igniteIndicator.fillStyle(0xff3333, 1).fillCircle(0, 0, 2);
+                  }
+                  try { e2._igniteIndicator.setPosition(e2.x, e2.y - 14); } catch (_) {}
+                }
+              }
               // Apply stun accumulation (20 -> guaranteed stun)
               e2._stunValue = Math.min(10, (e2._stunValue || 0) + (m._stunVal || 0));
-              if ((e2._stunValue || 0) >= 10) { e2._stunnedUntil = nowS + 200; e2._stunValue = 0; }
+              if ((e2._stunValue || 0) >= 10) {
+                e2._stunnedUntil = nowS + 200;
+                e2._stunValue = 0;
+                // Landmine Dispenser Path A major:
+                // After initial mine stun, apply +10 stun again at +1s and +2s.
+                if (enableEchoStun) {
+                  this.time.delayedCall(1000, () => { try { applyStunPulse(e2, this.time.now); } catch (_) {} });
+                  this.time.delayedCall(2000, () => { try { applyStunPulse(e2, this.time.now); } catch (_) {} });
+                }
+              }
             }
           }
         } catch (_) {}
@@ -10811,9 +11108,9 @@ export default class CombatScene extends Phaser.Scene {
         const angP = Math.atan2(pdy, pdx);
         const diff = Math.abs(Phaser.Math.Angle.Wrap(angP - facing));
         if (dd <= cfg.range && diff <= cfg.half) {
-          const dmg = this._applyAdsMeleeReduction((e.damage || 10));
+          const dmg = (e.damage || 10);
           if (this.time.now >= (this.player.iframesUntil || 0)) {
-            try { this.applyPlayerDamage(dmg); } catch (_) {}
+            try { this._applyEnemyMeleeDamageToPlayer(dmg, e); } catch (_) {}
             // Same short melee-specific i-frames as standard boss melee
             this.player.iframesUntil = this.time.now + 75;
             try { impactBurst(this, this.player.x, this.player.y, { color: 0xff3333, size: 'small' }); } catch (_) {}
@@ -10866,7 +11163,7 @@ export default class CombatScene extends Phaser.Scene {
             } catch (_) {}
             const now = this.time.now;
             if (now >= (this.player.iframesUntil || 0)) {
-              try { this.applyPlayerDamage(dmg); } catch (_) {}
+              try { this.applyPlayerDamage(this._applyLandmineExplosiveReduction(dmg)); } catch (_) {}
               // Mirror enemy bullet behaviour: if HP is now 0 or below, end run and return to Hub
               try {
                 if (this.gs && (this.gs.hp | 0) <= 0) {
@@ -11026,7 +11323,4 @@ export default class CombatScene extends Phaser.Scene {
 
 
     // Reset per-room boss reference to avoid stale state across restarts
-
-
-
 
