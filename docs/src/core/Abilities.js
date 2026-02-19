@@ -61,6 +61,15 @@ export const abilityDefs = [
       'Cooldown: 20s.',
     ].join('\n'),
   },
+  {
+    id: 'energy_siphon',
+    name: 'Energy Siphon',
+    desc: [
+      'For 5s, convert 25% of damage you deal into shield.',
+      'Also heal 5 HP whenever an enemy dies during the effect.',
+      'Cooldown: 12s.',
+    ].join('\n'),
+  },
 ];
 
 export function getAbilityById(id) {

@@ -2123,6 +2123,8 @@ export default class CombatScene extends Phaser.Scene {
     this._gadgets = [];
     this.ability = { onCooldownUntil: 0 };
     this._stealth = { active: false, until: 0, decoy: null };
+    this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map() };
+    this._siphonPackets = [];
     this._dirShield = { active: false, hp: 0, maxHp: 1000, decayPerSec: 100, g: null, breakG: null };
     this._vulcanTurrets = [];
     
@@ -2253,6 +2255,16 @@ export default class CombatScene extends Phaser.Scene {
     try {
       // Ensure HP reflects death for any downstream logic
       if (typeof e.hp === 'number' && e.hp > 0) e.hp = 0;
+    } catch (_) {}
+    // Energy Siphon: heal on enemy death while effect is active
+    try {
+      const siphon = this._energySiphon;
+      if (siphon?.active && this.time.now < (siphon.until || 0) && !e.isDummy) {
+        try { this._spawnSiphonTrace(e.x, e.y, 30, true); } catch (_) {}
+        const eff = getPlayerEffects(this.gs) || {};
+        const maxHp = Math.max(1, (this.gs?.maxHp || 0) + (eff.bonusHp || 0));
+        this.gs.hp = Math.min(maxHp, (this.gs?.hp || 0) + (siphon.killHeal || 5));
+      }
     } catch (_) {}
     try { if (e._igniteIndicator) { e._igniteIndicator.destroy(); e._igniteIndicator = null; } } catch (_) {}
     try { if (e._toxinIndicator) { e._toxinIndicator.destroy(); e._toxinIndicator = null; } } catch (_) {}
@@ -4212,9 +4224,89 @@ export default class CombatScene extends Phaser.Scene {
           this.deployVulcanTurret();
           this.ability.cooldownMs = noCd ? 1 : 20000;
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
+        } else if (abilityId === 'energy_siphon') {
+          if (!this._energySiphon) this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map() };
+          this._energySiphon.active = true;
+          this._energySiphon.until = nowT + 5000;
+          this._energySiphon.ratio = 0.25;
+          this._energySiphon.killHeal = 5;
+          if (!(this._energySiphon.trackedHp instanceof Map)) this._energySiphon.trackedHp = new Map();
+          this._energySiphon.trackedHp.clear();
+          try {
+            const arr = this.enemies?.getChildren?.() || [];
+            for (let i = 0; i < arr.length; i += 1) {
+              const e = arr[i];
+              if (!e?.active || e.isDummy) continue;
+              if (typeof e.hp !== 'number') continue;
+              this._energySiphon.trackedHp.set(e, Math.max(0, e.hp || 0));
+            }
+          } catch (_) {}
+          this.ability.cooldownMs = noCd ? 1 : 12000;
+          this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         }
       }
     }
+
+    // Energy Siphon update: convert dealt damage to shield while active
+    try {
+      const siphon = this._energySiphon;
+      if (siphon?.active) {
+        const nowS = this.time.now;
+        if (nowS >= (siphon.until || 0)) {
+          siphon.active = false;
+          try { siphon.trackedHp?.clear?.(); } catch (_) {}
+        } else {
+          if (!(siphon.trackedHp instanceof Map)) siphon.trackedHp = new Map();
+          const seen = new Set();
+          let dealt = 0;
+          const arr = this.enemies?.getChildren?.() || [];
+          for (let i = 0; i < arr.length; i += 1) {
+            const e = arr[i];
+            if (!e?.active || e.isDummy) continue;
+            if (typeof e.hp !== 'number') continue;
+            const cur = Math.max(0, e.hp || 0);
+            const prev = siphon.trackedHp.has(e) ? Math.max(0, siphon.trackedHp.get(e) || 0) : cur;
+            if (cur < prev) {
+              const delta = (prev - cur);
+              dealt += delta;
+              try { this._spawnSiphonTrace(e.x, e.y, delta, false); } catch (_) {}
+            }
+            siphon.trackedHp.set(e, cur);
+            seen.add(e);
+          }
+          for (const key of siphon.trackedHp.keys()) {
+            if (!key?.active || !seen.has(key)) siphon.trackedHp.delete(key);
+          }
+          if (dealt > 0) {
+            const gain = dealt * (siphon.ratio || 0.25);
+            const maxS = Math.max(0, this.gs?.shieldMax || 0);
+            this.gs.shield = Math.min(maxS, Math.max(0, (this.gs?.shield || 0) + gain));
+          }
+        }
+      }
+    } catch (_) {}
+    // Siphon packet update: home to player each frame until reaching them
+    try {
+      if (this._siphonPackets && this._siphonPackets.length) {
+        const dtS = ((this.game?.loop?.delta) || 16.7) / 1000;
+        this._siphonPackets = this._siphonPackets.filter((p) => {
+          if (!p?.g || !p.g.active || !this.player?.active) { try { p?.g?.destroy?.(); } catch (_) {} return false; }
+          const tx = this.player.x; const ty = this.player.y;
+          const dx = tx - p.x; const dy = ty - p.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const speed = p.speed || 320;
+          const step = speed * dtS;
+          if (d <= Math.max(6, step)) {
+            try { p.g.destroy(); } catch (_) {}
+            return false;
+          }
+          p.x += (dx / d) * step;
+          p.y += (dy / d) * step;
+          try { p.g.setPosition(p.x, p.y); } catch (_) {}
+          return true;
+        });
+      }
+    } catch (_) {}
 
     // Update active gadgets (ADS)
     if (this._gadgets && this._gadgets.length) {
@@ -9154,6 +9246,37 @@ export default class CombatScene extends Phaser.Scene {
       bit.vx = Math.cos(a) * sp; bit.vy = Math.sin(a) * sp; bit.moveUntil = this.time.now + Phaser.Math.Between(200, 400);
       this._bits.push(bit);
     }
+  }
+
+  _spawnSiphonPacket(x, y, color = 0x66ccff, size = 2, speed = 320) {
+    try {
+      if (!this._siphonPackets) this._siphonPackets = [];
+      const g = this.add.rectangle(x, y, Math.max(1, size), Math.max(1, size), color, 0.95);
+      try { g.setDepth(9400); g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+      this._siphonPackets.push({ x, y, g, speed });
+    } catch (_) {}
+  }
+
+  _spawnSiphonTrace(fromX, fromY, dmg, isKill = false) {
+    try {
+      const amount = Math.max(1, Math.floor(dmg || 1));
+      const col = isKill ? 0xff3333 : 0x66ccff; // player shield color for normal siphon
+      const count = isKill
+        ? Math.max(16, Math.min(32, Math.floor(amount * 0.8)))
+        : Math.max(2, Math.min(14, Math.floor(amount * 0.45)));
+      const spread = isKill ? 14 : 6;
+      const size = isKill ? 3 : (amount >= 20 ? 3 : 2);
+      for (let i = 0; i < count; i += 1) {
+        const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const r = Phaser.Math.FloatBetween(0, spread);
+        const sx = fromX + Math.cos(a) * r;
+        const sy = fromY + Math.sin(a) * r;
+        const spd = isKill ? Phaser.Math.Between(260, 420) : Phaser.Math.Between(240, 360);
+        this._spawnSiphonPacket(sx, sy, col, size, spd);
+      }
+      // tiny matching burst at source to make siphon event readable
+      try { impactBurst(this, fromX, fromY, { color: col, size: isKill ? 'large' : 'small' }); } catch (_) {}
+    } catch (_) {}
   }
 
   // Railgun mechanics
