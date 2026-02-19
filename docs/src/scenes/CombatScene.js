@@ -34,6 +34,119 @@ export default class CombatScene extends Phaser.Scene {
       if (!this.textures.exists('turret_base')) this.load.image('turret_base', 'assets/Turret Base.png');
       if (!this.textures.exists('turret_vulcan')) this.load.image('turret_vulcan', 'assets/Vulcan Turret.png');
     } catch (_) {}
+    // Audio fallback when entering Combat directly
+    try {
+      if (!this.cache.audio.exists('bgm_boss')) this.load.audio('bgm_boss', 'assets/AUDIO/BOSS.mp3');
+      if (!this.cache.audio.exists('bgm_campaign')) this.load.audio('bgm_campaign', 'assets/AUDIO/CAMPAIGN.mp3');
+      if (!this.cache.audio.exists('bgm_hub')) this.load.audio('bgm_hub', 'assets/AUDIO/HUB.mp3');
+      if (!this.cache.audio.exists('bgm_infinite')) this.load.audio('bgm_infinite', 'assets/AUDIO/INFINITE.mp3');
+    } catch (_) {}
+  }
+
+  _startBossCampaignBgm() {
+    try {
+      const mode = this.gs?.gameMode;
+      if (!this._isBossRoom) return;
+      if (mode !== 'Normal' && mode !== 'BossRush') return;
+      try { this.sound.stopByKey('bgm_boss'); } catch (_) {}
+      const music = this.sound.add('bgm_boss', { loop: true, volume: 0.7 });
+      this._bossBgm = music;
+      music.play();
+    } catch (_) {}
+  }
+
+  _stopBossCampaignBgm() {
+    try { this._bossBgm?.stop?.(); } catch (_) {}
+    try { this._bossBgm?.destroy?.(); } catch (_) {}
+    this._bossBgm = null;
+    try { this.sound.stopByKey('bgm_boss'); } catch (_) {}
+  }
+
+  _startCampaignRoomBgm() {
+    try {
+      if (this._isBossRoom) return;
+      if (this.gs?.gameMode !== 'Normal') return;
+      const existing = this.sound.get('bgm_campaign');
+      if (existing?.isPlaying) return; // keep playing across normal-room transitions
+      try { this.sound.stopByKey('bgm_campaign'); } catch (_) {}
+      const music = this.sound.add('bgm_campaign', { loop: true, volume: 0.7 });
+      this._campaignBgm = music;
+      music.play();
+    } catch (_) {}
+  }
+
+  _stopCampaignRoomBgm() {
+    try { this._campaignBgm?.stop?.(); } catch (_) {}
+    try { this._campaignBgm?.destroy?.(); } catch (_) {}
+    this._campaignBgm = null;
+    try { this.sound.stopByKey('bgm_campaign'); } catch (_) {}
+  }
+
+  _startHubRangeBgm() {
+    try {
+      const existing = this.sound.get('bgm_hub');
+      if (existing?.isPlaying) return;
+      try { this.sound.stopByKey('bgm_hub'); } catch (_) {}
+      const music = this.sound.add('bgm_hub', { loop: true, volume: 0.7 });
+      this._hubBgm = music;
+      music.play();
+    } catch (_) {}
+  }
+
+  _stopHubRangeBgm() {
+    try { this._hubBgm?.stop?.(); } catch (_) {}
+    try { this._hubBgm?.destroy?.(); } catch (_) {}
+    this._hubBgm = null;
+    try { this.sound.stopByKey('bgm_hub'); } catch (_) {}
+  }
+
+  _startInfiniteModeBgm() {
+    try {
+      const existing = this.sound.get('bgm_infinite');
+      if (existing?.isPlaying) return; // keep across same-mode room transitions
+      try { this.sound.stopByKey('bgm_infinite'); } catch (_) {}
+      const music = this.sound.add('bgm_infinite', { loop: true, volume: 0.7 });
+      this._infiniteBgm = music;
+      music.play();
+    } catch (_) {}
+  }
+
+  _stopInfiniteModeBgm() {
+    try { this._infiniteBgm?.stop?.(); } catch (_) {}
+    try { this._infiniteBgm?.destroy?.(); } catch (_) {}
+    this._infiniteBgm = null;
+    try { this.sound.stopByKey('bgm_infinite'); } catch (_) {}
+  }
+
+  _syncCombatBgm() {
+    try {
+      if (this.gs?.shootingRange) {
+        this._stopBossCampaignBgm();
+        this._stopCampaignRoomBgm();
+        this._stopInfiniteModeBgm();
+        this._startHubRangeBgm();
+        return;
+      }
+      this._stopHubRangeBgm();
+      const mode = this.gs?.gameMode;
+      if (this._isBossRoom && (mode === 'Normal' || mode === 'BossRush')) {
+        this._stopCampaignRoomBgm();
+        this._stopInfiniteModeBgm();
+        this._startBossCampaignBgm();
+        return;
+      }
+      this._stopBossCampaignBgm();
+      if (!this._isBossRoom && mode === 'Normal') {
+        this._stopInfiniteModeBgm();
+        this._startCampaignRoomBgm();
+      } else if (!this._isBossRoom && (mode === 'DeepDive' || mode === 'Swarm')) {
+        this._stopCampaignRoomBgm();
+        this._startInfiniteModeBgm();
+      } else {
+        this._stopCampaignRoomBgm();
+        this._stopInfiniteModeBgm();
+      }
+    } catch (_) {}
   }
 
   // Shared helper: brief red flash on an enemy's visual sprite when it takes damage
@@ -969,6 +1082,7 @@ export default class CombatScene extends Phaser.Scene {
         if (!explicitBoss) this._bossId = null;
       }
     } catch (_) {}
+    try { this._syncCombatBgm(); } catch (_) {}
     // Ensure Deep Dive tracker text exists in UI scene (create deterministically)
     try {
       const ensureDeepDiveLabel = () => {
@@ -1328,6 +1442,26 @@ export default class CombatScene extends Phaser.Scene {
     try {
       this.events.once('shutdown', () => {
         try { this.registry.set('bossActive', false); this.registry.set('bossName', ''); this.registry.set('bossHp', 0); this.registry.set('bossHpMax', 0); this.registry.set('cinematicActive', false); } catch (_) {}
+        try { this._stopBossCampaignBgm(); } catch (_) {}
+        try {
+          const keepCampaignAcrossNormalRooms = (
+            this.gs?.gameMode === 'Normal' &&
+            !this._isBossRoom &&
+            (this.gs?.hp || 0) > 0 &&
+            this.gs?.nextScene === SceneKeys.Combat
+          );
+          if (!keepCampaignAcrossNormalRooms) this._stopCampaignRoomBgm();
+        } catch (_) {}
+        try {
+          const mode = this.gs?.gameMode;
+          const keepInfiniteAcrossModeRooms = (
+            (mode === 'DeepDive' || mode === 'Swarm') &&
+            !this._isBossRoom &&
+            (this.gs?.hp || 0) > 0 &&
+            this.gs?.nextScene === SceneKeys.Combat
+          );
+          if (!keepInfiniteAcrossModeRooms) this._stopInfiniteModeBgm();
+        } catch (_) {}
       });
     } catch (_) {}
     // Reset exit state at scene start
@@ -2555,6 +2689,7 @@ export default class CombatScene extends Phaser.Scene {
     try { if (e._igniteIndicator) { e._igniteIndicator.destroy(); e._igniteIndicator = null; } } catch (_) {}
     try { if (e._toxinIndicator) { e._toxinIndicator.destroy(); e._toxinIndicator = null; } } catch (_) {}
     try { if (e._stunIndicator) { e._stunIndicator.destroy(); e._stunIndicator = null; } } catch (_) {}
+    try { if (e.isBoss) this._stopBossCampaignBgm(); } catch (_) {}
     // When any boss dies, clear all support enemies (turrets, HealDrones, LaserDrones) with death VFX
     try {
       if (e.isBoss) {

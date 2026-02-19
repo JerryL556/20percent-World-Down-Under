@@ -105,6 +105,15 @@ export default class HubScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
+    // Hub/Training BGM: restart from beginning whenever player returns to Hub.
+    try {
+      try { this.sound.stopByKey('bgm_boss'); } catch (_) {}
+      try { this.sound.stopByKey('bgm_campaign'); } catch (_) {}
+      try { this.sound.stopByKey('bgm_hub'); } catch (_) {}
+      try { this.sound.stopByKey('bgm_infinite'); } catch (_) {}
+      const hubBgm = this.sound.add('bgm_hub', { loop: true, volume: 0.7 });
+      hubBgm.play();
+    } catch (_) {}
     // Launch UI overlay for gameplay scenes
     this.scene.launch(SceneKeys.UI);
     // Ensure boss HUD is hidden when entering Hub
