@@ -2125,6 +2125,7 @@ export default class CombatScene extends Phaser.Scene {
     this._stealth = { active: false, until: 0, decoy: null };
     this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map(), nextAmbientAt: 0 };
     this._siphonPackets = [];
+    this._bulletCasings = [];
     this._dirShield = { active: false, hp: 0, maxHp: 1000, decayPerSec: 100, g: null, breakG: null };
     this._vulcanTurrets = [];
     
@@ -2918,6 +2919,7 @@ export default class CombatScene extends Phaser.Scene {
         }
       }
     } catch (_) {}
+    try { this._spawnBulletCasing(gs.activeWeapon); } catch (_) {}
     const pellets = weapon.pelletCount || 1;
     // Dynamic spread: increases while holding fire, recovers when released
     let totalSpreadRad = 0;
@@ -3706,6 +3708,7 @@ export default class CombatScene extends Phaser.Scene {
               }
             }
           } catch (_) {}
+          try { this._spawnBulletCasing(this.gs.activeWeapon); } catch (_) {}
           const bN = this.bullets.get(m.x, m.y, 'bullet');
           if (!bN) return;
           bN.setActive(true).setVisible(true);
@@ -3764,6 +3767,7 @@ export default class CombatScene extends Phaser.Scene {
             }
           }
         } catch (_) {}
+        try { this._spawnBulletCasing(this.gs.activeWeapon); } catch (_) {}
         const b2 = this.bullets.get(m2.x, m2.y, 'bullet');
         if (!b2) return;
         b2.setActive(true).setVisible(true);
@@ -3836,6 +3840,43 @@ export default class CombatScene extends Phaser.Scene {
         this.registry.set('ammoInMag', this.ammoByWeapon[wid]);
       });
     }
+  }
+
+  _spawnCasingAt(x, y, angle, weaponId = 'rifle') {
+    try {
+      const allowed = new Set(['pistol', 'rifle', 'battle_rifle', 'shotgun', 'smg', 'minigun']);
+      if (!allowed.has(weaponId)) return;
+      const ang = (typeof angle === 'number') ? angle : (this.playerFacing || 0);
+      const backX = -Math.cos(ang);
+      const backY = -Math.sin(ang);
+      const color = (weaponId === 'shotgun') ? 0xcc3333 : 0xffee66;
+      const w = (weaponId === 'shotgun') ? 4 : 3;
+      const h = (weaponId === 'shotgun') ? 2 : 1.5;
+      const g = this.add.rectangle(x, y, w, h, color, 0.9);
+      try { g.setDepth(9050); g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
+      if (!this._bulletCasings) this._bulletCasings = [];
+      const backKick = Phaser.Math.FloatBetween(30, 46); // slightly stronger push to gun-back direction
+      const upKick = Phaser.Math.FloatBetween(42, 66);   // stronger upward pop
+      this._bulletCasings.push({
+        g,
+        x,
+        y,
+        vx: backX * backKick,
+        vy: (backY * backKick) - upKick,
+        ax: 0,
+        ay: Phaser.Math.FloatBetween(1400, 1900), // accelerates down
+        bornAt: this.time.now,
+        lifeMs: 200,
+        fading: false,
+      });
+    } catch (_) {}
+  }
+
+  _spawnBulletCasing(weaponId) {
+    try {
+      const p = getWeaponBarrelPoint(this, 0.5, 2);
+      this._spawnCasingAt(p.x, p.y, this.playerFacing || 0, weaponId);
+    } catch (_) {}
   }
 
   update() {
@@ -4316,6 +4357,38 @@ export default class CombatScene extends Phaser.Scene {
         });
       }
     } catch (_) {}
+    // Bullet casing VFX update: ballistic-like drop straight down with acceleration.
+    try {
+      if (this._bulletCasings && this._bulletCasings.length) {
+        const dtC = ((this.game?.loop?.delta) || 16.7) / 1000;
+        const nowC = this.time.now;
+        this._bulletCasings = this._bulletCasings.filter((c) => {
+          if (!c?.g || !c.g.active) { try { c?.g?.destroy?.(); } catch (_) {} return false; }
+          const age = nowC - (c.bornAt || nowC);
+          if (age >= (c.lifeMs || 500)) {
+            if (!c.fading) {
+              c.fading = true;
+              try {
+                this.tweens.add({
+                  targets: c.g,
+                  alpha: 0,
+                  duration: 120,
+                  ease: 'Cubic.Out',
+                  onComplete: () => { try { c.g.destroy(); } catch (_) {} },
+                });
+              } catch (_) { try { c.g.destroy(); } catch (_) {} }
+            }
+            return false;
+          }
+          c.vx = (c.vx || 0) + ((c.ax || 0) * dtC);
+          c.vy = (c.vy || 0) + ((c.ay || 0) * dtC);
+          c.x += (c.vx || 0) * dtC;
+          c.y += (c.vy || 0) * dtC;
+          try { c.g.setPosition(c.x, c.y); } catch (_) {}
+          return true;
+        });
+      }
+    } catch (_) {}
 
     // Update active gadgets (ADS)
     if (this._gadgets && this._gadgets.length) {
@@ -4517,6 +4590,18 @@ export default class CombatScene extends Phaser.Scene {
             const sy = (typeof t._muzzleY === 'number') ? t._muzzleY : t.y;
             const spread = Phaser.Math.DegToRad(3);
             const ang = (t.angle || 0) + Phaser.Math.FloatBetween(-spread / 2, spread / 2);
+            // Match player's minigun muzzle look (split flash + dense yellow muzzle pixels)
+            try {
+              muzzleFlashSplit(this, sx, sy, { angle: ang, color: 0xffee66, count: 3, spreadDeg: 24, length: 16, thickness: 4 });
+              const burst = { spreadDeg: 36, speedMin: 130, speedMax: 260, lifeMs: 190, color: 0xffee66, size: 2, alpha: 0.75 };
+              pixelSparks(this, sx, sy, { angleRad: ang, count: 14, ...burst });
+            } catch (_) {}
+            // Eject a casing with the same behavior as player ballistic casings.
+            try {
+              const cx = (t.head?.x ?? t.x);
+              const cy = (t.head?.y ?? t.y);
+              this._spawnCasingAt(cx, cy, ang, 'minigun');
+            } catch (_) {}
             const b = this.bullets.get(sx, sy, 'bullet');
             if (b) {
               b.setActive(true).setVisible(true);
