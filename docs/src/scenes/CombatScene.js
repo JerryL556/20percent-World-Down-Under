@@ -2123,7 +2123,7 @@ export default class CombatScene extends Phaser.Scene {
     this._gadgets = [];
     this.ability = { onCooldownUntil: 0 };
     this._stealth = { active: false, until: 0, decoy: null };
-    this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map() };
+    this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map(), nextAmbientAt: 0 };
     this._siphonPackets = [];
     this._dirShield = { active: false, hp: 0, maxHp: 1000, decayPerSec: 100, g: null, breakG: null };
     this._vulcanTurrets = [];
@@ -4225,11 +4225,13 @@ export default class CombatScene extends Phaser.Scene {
           this.ability.cooldownMs = noCd ? 1 : 20000;
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         } else if (abilityId === 'energy_siphon') {
-          if (!this._energySiphon) this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map() };
+          if (!this._energySiphon) this._energySiphon = { active: false, until: 0, ratio: 0.25, killHeal: 5, trackedHp: new Map(), nextAmbientAt: 0 };
           this._energySiphon.active = true;
-          this._energySiphon.until = nowT + 5000;
+          this._energySiphon.until = nowT + 8000;
           this._energySiphon.ratio = 0.25;
           this._energySiphon.killHeal = 5;
+          this._energySiphon.nextAmbientAt = nowT;
+          try { this._spawnSiphonAbsorbBurst(); } catch (_) {}
           if (!(this._energySiphon.trackedHp instanceof Map)) this._energySiphon.trackedHp = new Map();
           this._energySiphon.trackedHp.clear();
           try {
@@ -4241,7 +4243,7 @@ export default class CombatScene extends Phaser.Scene {
               this._energySiphon.trackedHp.set(e, Math.max(0, e.hp || 0));
             }
           } catch (_) {}
-          this.ability.cooldownMs = noCd ? 1 : 12000;
+          this.ability.cooldownMs = noCd ? 1 : 14000;
           this.ability.onCooldownUntil = noCd ? nowT : nowT + this.ability.cooldownMs;
         }
       }
@@ -4254,8 +4256,13 @@ export default class CombatScene extends Phaser.Scene {
         const nowS = this.time.now;
         if (nowS >= (siphon.until || 0)) {
           siphon.active = false;
+          siphon.nextAmbientAt = 0;
           try { siphon.trackedHp?.clear?.(); } catch (_) {}
         } else {
+          if (nowS >= (siphon.nextAmbientAt || 0)) {
+            try { this._spawnSiphonAbsorbBurst(); } catch (_) {}
+            siphon.nextAmbientAt = nowS + Phaser.Math.Between(90, 150);
+          }
           if (!(siphon.trackedHp instanceof Map)) siphon.trackedHp = new Map();
           const seen = new Set();
           let dealt = 0;
@@ -4289,8 +4296,10 @@ export default class CombatScene extends Phaser.Scene {
     try {
       if (this._siphonPackets && this._siphonPackets.length) {
         const dtS = ((this.game?.loop?.delta) || 16.7) / 1000;
+        const nowP = this.time.now;
         this._siphonPackets = this._siphonPackets.filter((p) => {
           if (!p?.g || !p.g.active || !this.player?.active) { try { p?.g?.destroy?.(); } catch (_) {} return false; }
+          if ((nowP - (p.bornAt || nowP)) >= 500) { try { p.g.destroy(); } catch (_) {} return false; }
           const tx = this.player.x; const ty = this.player.y;
           const dx = tx - p.x; const dy = ty - p.y;
           const d = Math.hypot(dx, dy) || 1;
@@ -9251,9 +9260,9 @@ export default class CombatScene extends Phaser.Scene {
   _spawnSiphonPacket(x, y, color = 0x66ccff, size = 2, speed = 520) {
     try {
       if (!this._siphonPackets) this._siphonPackets = [];
-      const g = this.add.rectangle(x, y, Math.max(1, size), Math.max(1, size), color, 0.95);
+      const g = this.add.rectangle(x, y, Math.max(1, size), Math.max(1, size), color, 0.55);
       try { g.setDepth(9400); g.setBlendMode(Phaser.BlendModes.ADD); } catch (_) {}
-      this._siphonPackets.push({ x, y, g, speed });
+      this._siphonPackets.push({ x, y, g, speed, bornAt: this.time.now });
     } catch (_) {}
   }
 
@@ -9276,6 +9285,25 @@ export default class CombatScene extends Phaser.Scene {
       }
       // tiny matching burst at source to make siphon event readable
       try { impactBurst(this, fromX, fromY, { color: col, size: isKill ? 'large' : 'small' }); } catch (_) {}
+    } catch (_) {}
+  }
+
+  _spawnSiphonAbsorbBurst() {
+    try {
+      if (!this.player?.active) return;
+      const px = this.player.x;
+      const py = this.player.y;
+      const col = 0x66ccff; // match shield ring color
+      const count = Phaser.Math.Between(3, 5);
+      for (let i = 0; i < count; i += 1) {
+        const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const r = Phaser.Math.FloatBetween(12, 48);
+        const sx = px + Math.cos(a) * r;
+        const sy = py + Math.sin(a) * r;
+        // Ambient siphon motes are intentionally slower than enemy-to-player siphon packets.
+        const spd = Phaser.Math.Between(170, 260);
+        this._spawnSiphonPacket(sx, sy, col, 2, spd);
+      }
     } catch (_) {}
   }
 
