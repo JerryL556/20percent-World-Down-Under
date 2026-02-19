@@ -1664,7 +1664,8 @@ export default class UIScene extends Phaser.Scene {
       owned.forEach((id) => {
         const a = getAbilityById(id);
         const isSel = id === selectedId;
-        const b = makeTextButton(this, leftColX + 4, ay, `${a?.name || id}${isSel ? ' [Selected]' : ''}`, () => { selectedId = id; render(); }).setOrigin(0, 0);
+        const baseName = (a?.name || id);
+        const b = makeTextButton(this, leftColX + 4, ay, `${isSel ? `[${baseName}]` : baseName}`, () => { selectedId = id; render(); }).setOrigin(0, 0);
         try { b.setStyle({ color: isSel ? '#ffff66' : '#ffffff' }); } catch (_) {}
         addNode(b); ay += 30;
       });
