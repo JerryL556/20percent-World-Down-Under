@@ -297,7 +297,7 @@ export default class HubScene extends Phaser.Scene {
       color: '#ffffff',
     }).setOrigin(0.5);
 
-    // Bonus block (left side): grants 5000g + 20 DC on interact
+    // Bonus block (left side): grants 10000g + 50 DC on interact
     this.bonusZone = this.add.zone(24, height / 2, 20, 20);
     this.physics.world.enable(this.bonusZone);
     this.bonusZone.body.setAllowGravity(false);
@@ -970,8 +970,8 @@ export default class HubScene extends Phaser.Scene {
 
     if (this.inputMgr.pressedInteract) {
       if (nearBonus && !this.gs._bonusClaimed) {
-        this.gs.gold = (this.gs.gold || 0) + 5000;
-        this.gs.droneCores = (this.gs.droneCores || 0) + 20;
+        this.gs.gold = (this.gs.gold || 0) + 10000;
+        this.gs.droneCores = (this.gs.droneCores || 0) + 50;
         this.gs._bonusClaimed = true;
         try { SaveManager.saveToLocal(this.gs); } catch (_) {}
         try { this.bonusG.clear(); this.bonusG.fillStyle(0x444444, 1).fillRect(this.bonusZone.x - 10, this.bonusZone.y - 10, 20, 20); } catch (_) {}

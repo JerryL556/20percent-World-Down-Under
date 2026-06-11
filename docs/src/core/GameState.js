@@ -20,8 +20,8 @@ export function difficultyModifiers(diff) {
 
 export class GameState {
   constructor() {
-    this.gold = 1000;
-    this.droneCores = 3; // secondary currency for cores
+    this.gold = 1500;
+    this.droneCores = 1; // secondary currency for cores
     this.xp = 0;
     this.maxHp = 100;
     this.hp = 100;
@@ -85,17 +85,17 @@ export class GameState {
     this.dashRegenMs = 6000;
     // Audio volume settings (0..1), final music volume = master * track
     this.audioVolumes = {
-      master: 1,
-      hub: 0.7,
-      campaign: 0.7,
-      boss: 0.7,
-      infinite: 0.7,
+      master: 0.5,
+      hub: 0.5,
+      campaign: 0.5,
+      boss: 0.5,
+      infinite: 0.5,
     };
   }
 
   startNewRun(seed, difficulty) {
-    this.gold = 1000;
-    this.droneCores = 3;
+    this.gold = 1500;
+    this.droneCores = 1;
     this.xp = 0;
     this.maxHp = 100;
     this.hp = 100;
@@ -355,14 +355,14 @@ export class GameState {
     if (typeof gs.lastDamagedAt !== 'number') gs.lastDamagedAt = 0;
     if (typeof gs.allowOverrun !== 'boolean') gs.allowOverrun = true;
     if (!gs.audioVolumes || typeof gs.audioVolumes !== 'object') {
-      gs.audioVolumes = { master: 1, hub: 0.7, campaign: 0.7, boss: 0.7, infinite: 0.7 };
+      gs.audioVolumes = { master: 0.5, hub: 0.5, campaign: 0.5, boss: 0.5, infinite: 0.5 };
     }
     const clamp01 = (v, d) => (typeof v === 'number' && Number.isFinite(v)) ? Math.max(0, Math.min(1, v)) : d;
-    gs.audioVolumes.master = clamp01(gs.audioVolumes.master, 1);
-    gs.audioVolumes.hub = clamp01(gs.audioVolumes.hub, 0.7);
-    gs.audioVolumes.campaign = clamp01(gs.audioVolumes.campaign, 0.7);
-    gs.audioVolumes.boss = clamp01(gs.audioVolumes.boss, 0.7);
-    gs.audioVolumes.infinite = clamp01(gs.audioVolumes.infinite, 0.7);
+    gs.audioVolumes.master = clamp01(gs.audioVolumes.master, 0.5);
+    gs.audioVolumes.hub = clamp01(gs.audioVolumes.hub, 0.5);
+    gs.audioVolumes.campaign = clamp01(gs.audioVolumes.campaign, 0.5);
+    gs.audioVolumes.boss = clamp01(gs.audioVolumes.boss, 0.5);
+    gs.audioVolumes.infinite = clamp01(gs.audioVolumes.infinite, 0.5);
     return gs;
   }
 }
